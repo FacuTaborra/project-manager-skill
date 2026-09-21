@@ -31,12 +31,20 @@ class ClickUpProvider:
     without a Bearer prefix.
     """
 
-    def __init__(self, api_key: str, *, http: HttpClient | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        workspace_id: str | None = None,
+        http: HttpClient | None = None,
+    ) -> None:
         self._http = http or HttpClient(
             url=CLICKUP_API_BASE,
             headers={"Authorization": api_key},
         )
-        self._workspace_id: str | None = None
+        # Pinned from config, never discovered. Picking `teams[0]` meant the board
+        # you wrote to depended on the order ClickUp happened to return.
+        self._workspace_id = workspace_id
 
     # -- low-level REST ------------------------------------------------------
 
@@ -67,14 +75,20 @@ class ClickUpProvider:
         return result
 
     def _workspace(self) -> str:
-        if self._workspace_id:
-            return self._workspace_id
-        data = self._get("team")
-        teams = data.get("teams") or []
-        if not teams:
-            raise ProviderError("No ClickUp workspace found for this API token.")
-        self._workspace_id = teams[0]["id"]
+        if not self._workspace_id:
+            raise ProviderError(
+                "No ClickUp workspace pinned. Run `pm init` in this repo so .pm.toml "
+                "declares which workspace to use."
+            )
         return self._workspace_id
+
+    def workspace_ids(self) -> list[str]:
+        return [str(t["id"]) for t in self._get("team").get("teams") or []]
+
+    def list_workspaces(self) -> list[Team]:
+        """Discovery only — `pm init` uses it to let the user pick."""
+        teams = self._get("team").get("teams") or []
+        return [Team(id=str(t["id"]), name=t.get("name", ""), key=str(t["id"])[:8]) for t in teams]
 
     # -- IssueProvider methods -----------------------------------------------
 
@@ -142,7 +156,21 @@ class ClickUpProvider:
         return [State(id=s["status"], name=s["status"]) for s in statuses]
 
     def list_labels(self, team_id: str) -> list[Label]:
-        return []
+        """ClickUp tags, which live on the space — the same granularity `team_id` is.
+
+        Tags have no id of their own: the name is the identity. Using the name as
+        the id matches what this adapter already does for statuses, and lets the
+        shared label-resolution code work unchanged.
+        """
+        data = self._get(f"space/{team_id}/tag")
+        return [Label(id=t["name"], name=t["name"]) for t in data.get("tags") or []]
+
+    def create_label(self, team_id: str, name: str) -> Label:
+        self._post(
+            f"space/{team_id}/tag",
+            {"tag": {"name": name, "tag_fg": "#ffffff", "tag_bg": "#0a7ea4"}},
+        )
+        return Label(id=name, name=name)
 
     def resolve_user_by_email(self, email: str) -> User | None:
         workspace_id = self._workspace()
@@ -185,7 +213,10 @@ class ClickUpProvider:
         if draft.priority is not None:
             body["priority"] = draft.priority
         if draft.assignee_id:
-            body["assignees"] = [int(draft.assignee_id)]
+            body["assignees"] = [_member_id(draft.assignee_id)]
+        if draft.label_ids:
+            # In ClickUp a label id *is* its name; the API takes names here.
+            body["tags"] = list(draft.label_ids)
 
         data = self._post(f"list/{draft.project_id}/task", body)
         return _to_issue(data)
@@ -205,7 +236,7 @@ class ClickUpProvider:
         if update.priority is not None:
             body["priority"] = update.priority
         if update.assignee_id is not None:
-            body["assignees"] = {"add": [int(update.assignee_id)]}
+            body["assignees"] = {"add": [_member_id(update.assignee_id)]}
 
         data = self._http.put_json(
             f"{CLICKUP_API_BASE}/task/{update.issue_id}",
@@ -259,6 +290,14 @@ class ClickUpProvider:
                     {"title": title or "Update", "content": content, "content_format": "text/md"},
                 )
         return Doc(id=doc_id, title=doc_data.get("title", ""), url=doc_data.get("url"))
+
+
+def _member_id(raw: str) -> int:
+    """ClickUp member ids are numeric; a bare int() here escaped as a traceback."""
+    try:
+        return int(raw)
+    except ValueError:
+        raise ProviderError(f"ClickUp member ids are numeric, got {raw!r}.") from None
 
 
 def _is_done(task: dict[str, Any]) -> bool:

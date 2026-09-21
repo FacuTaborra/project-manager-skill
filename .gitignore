@@ -29,10 +29,15 @@ desktop.ini
 
 # Local secrets (NEVER commit)
 *.env
-!examples/*.env.example
 secrets/
-.linear-cache.json
+credentials.toml
+!credentials.example.toml
+
+# Legacy config, superseded by the committed .pm.toml in each repo.
+# Kept ignored so old checkouts don't suddenly start staging it.
 projects.pm
+.linear-cache.json
+.clickup-cache.json
 
 # Logs
 *.log

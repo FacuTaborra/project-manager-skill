@@ -4,165 +4,233 @@
 
 Un skill para Claude Code que convierte a Claude en tu Project Manager, conectado a **Linear** o **ClickUp**.
 
-En vez de abrir el tracker, revisar qué hay abierto, pensar qué issues crear y completar formularios — le describís la tarea a Claude y él se encarga. Sabe qué está en progreso, qué está bloqueado, y puede proponer un board completo de issues (con títulos, descripciones y prioridades) antes de crear cualquier cosa.
+En vez de abrir el tracker, revisar qué hay abierto, pensar qué issues crear y completar formularios — le describís la tarea a Claude y él se encarga.
 
 ```
 /pm                          → resumen de lo que está abierto, en progreso y bloqueado
 /pm "agregar multi-tenant"   → propone un board de issues y los crea al confirmar
 ```
 
-Funciona en **cualquier repo** y responde siempre en el idioma que usás para hablar con Claude.
+Cada repo declara en un archivo commiteado a qué tablero escribe, y **el CLI se niega por código a escribir en cualquier otro lado**. Eso es lo que lo hace usable por un equipo con varios tableros a la vez.
 
 ---
 
 ## Requisitos
 
-- Python 3.10+ (solo stdlib, sin `pip install`)
+- Python 3.10+ no alcanza: **3.11+** (usa `tomllib` de la stdlib). Si instalás con `uv`, no tenés que hacer nada — trae su propio intérprete.
 - Cuenta en Linear o ClickUp con permisos para crear issues
-- [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) instalado
+- [Claude Code](https://docs.anthropic.com/claude/docs/claude-code)
 
 ---
 
 ## Instalación
 
-**Linux / macOS / Git Bash:**
 ```bash
-git clone https://github.com/FacuTaborra/product-manager-skill.git
-cd claude-pm-skill
-./install.sh
+uv tool install git+https://github.com/FacuTaborra/claude-pm-skill
+pm install-skill --yes
+pm creds add --name <nombre> --provider clickup --token pk_xxx
+cd tu-repo && pm init
 ```
 
-**Windows (PowerShell):**
-```powershell
-git clone https://github.com/FacuTaborra/product-manager-skill.git
-cd claude-pm-skill
-.\install.ps1
+**Si te perdés en cualquier punto, corré `pm doctor`.** Te dice dónde estás parado y cuál es el comando exacto que sigue:
+
+```
+$ pm doctor
+claude-pm-skill — doctor
+  Python:        3.12.12
+  Skill:         ~/.claude/skills/pm/SKILL.md (instalada)
+  Credenciales:  ninguna
+
+  ▸ Próximo paso: guardar tu token
+      pm creds add --name <nombre> --provider clickup --token pk_xxx
+    ClickUp → Settings → Apps → API Token.
+    Para Linear: https://linear.app/settings/api (Read + Write).
 ```
 
-### Alias `pm` (opcional pero recomendado)
+Eso también es lo que hace que le puedas pasar el repo a Claude y decirle "instalalo": corre `doctor`, lee el próximo paso, ejecuta, repite. No tiene que adivinar nada de este README.
 
-**Bash / Zsh** — agregar a `~/.bashrc` o `~/.zshrc`:
-```bash
-alias pm='python3 ~/.claude/skills/pm/pm.py'
-```
-
-**PowerShell** — agregar a `$PROFILE`:
-```powershell
-function pm { python3 "$HOME/.claude/skills/pm/pm.py" @args }
-```
-
-### Permisos de Claude Code
-
-Los scripts de instalación registran automáticamente los permisos necesarios en `~/.claude/settings.json` para que Claude Code nunca pida confirmación al invocar el skill:
-
-- `Bash(python3 ~/.claude/skills/pm/pm.py*)` — ejecutar el CLI
-- `Write(~/.claude/tmp_*.md)` — archivos temporales para descripciones largas
-
-Si actualizás el skill, `pm setup --force` también actualiza los permisos.
+Para actualizar: `uv tool upgrade claude-pm-skill`.
 
 ---
 
 ## Configuración
 
-### Linear
+Son dos archivos. Los secretos nunca entran al repo.
 
-1. Ir a <https://linear.app/settings/api> → **Create new API key** (permisos Read + Write)
-2. La key empieza con `lin_api_...`
-3. Crear el archivo `.env` en la raíz del repo (o en `~/.claude/secrets/linear-pak.env` para que aplique globalmente):
-   ```
-   LINEAR_API_KEY=lin_api_xxxxxxxxxxxxxxx
-   ```
-4. Verificar:
-   ```bash
-   pm doctor
-   ```
-   Tenés que ver `Linear ping: ok — authenticated as <tu email>`.
+### 1. Tus credenciales — `~/.claude/pm/credentials.toml`
 
-### ClickUp
+Un perfil por cuenta, así podés tener varios workspaces de ClickUp conviviendo. No lo edites a mano:
 
-1. Ir a **ClickUp → Settings → Apps** → copiar el API Token (empieza con `pk_`)
-2. Crear el archivo `.env` en la raíz del repo (o en `~/.claude/secrets/clickup-pak.env` globalmente):
-   ```
-   CLICKUP_API_KEY=pk_xxxxxxxxxxxxxxx
-   PM_PROVIDER=clickup
-   ```
-3. Verificar:
-   ```bash
-   pm doctor
-   ```
-   Tenés que ver `ClickUp ping: ok — authenticated as <tu email>`.
+```bash
+pm creds add --name 4plus --provider clickup --token pk_xxx
+```
 
-> **Nota:** El archivo `.env` local tiene prioridad sobre el global. Podés tener una key distinta por repo.
+```
+✓ token válido — autenticado como vos@mail.com
+✓ alcanza 2 workspace(s): 4Plus (9013377000), Kendal Salud (9017118322)
+✓ perfil '4plus' escrito en ~/.claude/pm/credentials.toml
+```
+
+Verifica el token contra la API **antes** de guardarlo, así uno mal copiado falla ahí y no tres comandos después. Y te lista los workspaces que ve, que es justo lo que `pm init` te va a preguntar.
+
+- **ClickUp:** Settings → Apps → API Token (empieza con `pk_`)
+- **Linear:** <https://linear.app/settings/api> → Create new API key (Read + Write)
+
+Para que el token no quede en el historial de la shell, pasalo por entorno:
+
+```bash
+PM_NEW_TOKEN=pk_xxx pm creds add --name 4plus --provider clickup
+```
+
+```bash
+pm creds list      # qué perfiles hay (tokens redactados)
+pm creds import    # si venías de la versión anterior: migra ~/.claude/secrets/*.env
+```
+
+En Linux/macOS el archivo queda en `chmod 600` solo.
+
+### 2. El tablero de cada repo — `<repo>/.pm.toml`
+
+No lo escribas a mano:
+
+```bash
+cd mi-repo
+pm init
+```
+
+`pm init` lista los spaces y las listas que tu token ve, y escribe el archivo. Si hay varias opciones, sale con exit 2 y te dice el flag con el que elegís (`--space-id`, `--list-id`).
+
+El resultado se ve así:
+
+```toml
+version  = 1
+provider = "clickup"
+profile  = "4plus"
+
+[scope]
+workspace_id   = "9013377000"
+workspace_name = "Hemisphere"
+space_id       = "90130521234"
+space_name     = "4plus"
+lists = [
+  { id = "901305678901", name = "modulo-energia" },
+]
+
+[defaults]
+labels = ["alerts-api"]
+```
+
+**Commiteá ese archivo.** Es el punto: todo el equipo hereda el mismo binding y nadie más tiene que configurar nada.
+
+Los `*_name` no resuelven nada — mandan los IDs. Están para que los errores digan "modulo-energia" en vez de un número, y para detectar si alguien renombró el tablero.
+
+#### Migrar desde `projects.pm`
+
+```bash
+cd mi-repo
+pm init --from-legacy
+```
+
+Lee la sección de tu repo en el `projects.pm` viejo, resuelve los nombres contra la API, y de paso convierte el campo `label:` en `[defaults] labels` — que ahora sí hace algo.
 
 ---
 
-## Configuración por repo (`projects.pm`)
+## Las barreras
 
-Si trabajás con varios repos y cada uno usa un provider o proyecto distinto, podés centralizarlo en `~/.claude/skills/pm/projects.pm`. Cada sección es el nombre del repo (el mismo nombre que el directorio):
+Ninguna depende de que el modelo se porte bien.
 
-```ini
-[mi-repo-linear]
-provider: linear
-space: lin_team_xxxxxxxxxx    # opcional — si no está, lo auto-detecta
-project: lin_project_xxxxxxx  # opcional
+| Barrera | Qué impide |
+|---|---|
+| **Scope lock** | Toda escritura valida su destino contra `[scope]`. Un `--project-id` de otro tablero aborta con exit 4. |
+| **Verificación de pertenencia** | `update-issue` lee la task antes de tocarla: si vive en otra lista, aborta. |
+| **Pin de workspace** | Si el token del perfil no alcanza el workspace declarado, no se escribe nada. |
+| **`--dry-run`** | Muestra el destino resuelto por nombre y el payload exacto, sin tocar la API. |
+| **Cambios de estructura apagados** | `create-project` y `create-team` requieren `--allow-structural-changes`, y están fuera del contrato del skill. |
 
-[mi-repo-clickup]
-provider: clickup
-space: 12345678               # Space ID — opcional
-project: 87654321             # List ID — opcional
+```bash
+pm create-issue --title "prueba" --description "x" --dry-run
 ```
-
-Si no existe `projects.pm`, el skill usa el provider del `.env` del repo actual (o `linear` por defecto) y auto-detecta el equipo y proyecto por nombre.
+```json
+{
+  "dry_run": true,
+  "action": "create-issue",
+  "destination": "Hemisphere → 4plus → modulo-energia",
+  "payload": { "title": "prueba", "labels": ["alerts-api"] }
+}
+```
 
 ---
 
 ## Uso
 
-Abrí Claude Code en cualquier proyecto y usá `/pm`:
+Abrí Claude Code en cualquier repo con `.pm.toml` y usá `/pm`:
 
 ```
 /pm
 ```
-→ briefing de issues abiertos del repo actual.
+→ briefing de issues abiertos.
 
 ```
 /pm agreguemos un sistema de notificaciones por email
 ```
-→ Claude propone un board de issues, pedís confirmación, y los crea en tu tracker.
-
-El skill detecta el nombre del proyecto desde el directorio actual y busca el proyecto correspondiente. La primera vez cachea los IDs del equipo/proyecto; las siguientes llamadas son rápidas.
+→ Claude propone un board, pedís confirmación, y los crea.
 
 ---
 
-## Comandos útiles
+## Comandos
 
-### Setup y diagnóstico
+### Setup
 
 ```bash
-pm doctor                          # verifica configuración y conectividad
-pm setup                           # descubre y cachea team/proyecto/estados
-pm setup --force                   # fuerza re-discovery (útil si algo cambió)
-pm setup --create-project          # crea el proyecto si no existe en el tracker
-pm setup --project-id <id>         # apunta a un proyecto existente con otro nombre
+pm doctor                          # dónde estás parado y qué comando sigue
+pm install-skill --yes             # instala SKILL.md + permisos
+pm creds add --name N --provider P --token T
+pm creds list                      # perfiles (tokens redactados)
+pm creds import                    # migra ~/.claude/secrets/*.env
+pm init                            # escribe .pm.toml en este repo
+pm init --from-legacy              # pre-llena desde el projects.pm viejo
+pm setup --force                   # revalida el scope y refresca el cache
 ```
 
 ### Issues
 
 ```bash
-pm briefing                        # resumen de issues del proyecto actual
-pm get-issue --id <id>             # obtiene un issue con su descripción completa
-pm create-issue --title "..." --state todo --priority 2
+pm briefing
+pm get-issue --id <id>
+pm search "query"
+pm create-issue --title "..." --description "..." --state Backlog --priority 2
 pm update-issue --id <id> --state complete
-pm update-issue --id <id> --title "nuevo título" --priority 1
-pm search "query"                  # busca issues (útil para detectar duplicados)
 ```
+
+Todo comando que escribe acepta `--dry-run`.
 
 ### Lookups
 
 ```bash
-pm list-teams                      # lista equipos/spaces disponibles
-pm list-projects                   # lista proyectos del equipo
-pm list-states                     # lista estados disponibles (todo, in-progress, etc.)
-pm list-labels                     # lista etiquetas del equipo
-pm resolve-user email@example.com  # obtiene el ID de un usuario por email
+pm list-teams                      # spaces disponibles
+pm list-projects                   # listas, cada una marcada in_scope
+pm list-states
+pm list-labels                     # tags del space (ClickUp) o labels (Linear)
+pm resolve-user email@example.com
 ```
+
+---
+
+## Dos repos, un tablero
+
+`alerts-api` y `energy-manage-api` pueden escribir los dos en `modulo-energia`: cada uno declara su
+`[defaults] labels`, y toda issue sale etiquetada con el repo que la creó sin que nadie se acuerde
+de pasar `--label`.
+
+---
+
+## Para CI
+
+```bash
+export PM_TOKEN=pk_xxx
+export PM_PROFILE=4plus     # opcional
+```
+
+`PM_TOKEN` saltea el archivo de credenciales. Las variables `LINEAR_API_KEY` / `CLICKUP_API_KEY`
+**no** se leen a propósito: tomar un token del directorio donde uno está parado es justo lo que
+este diseño elimina.

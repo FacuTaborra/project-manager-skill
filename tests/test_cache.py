@@ -1,166 +1,185 @@
-"""Tests for Cache (frozen dataclass) and CacheRepository implementations."""
+"""Cache v2: fingerprint keying, freshness, and refusal to read older formats."""
 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from src.claude_pm.infrastructure.cache import (
+    CACHE_TTL_DAYS,
+    CACHE_VERSION,
     Cache,
     InMemoryCacheRepository,
     JsonFileCacheRepository,
+    find_legacy_caches,
 )
 
-
-class TestCacheIsFresh:
-    def test_fresh_when_recent(self) -> None:
-        ts = datetime.now(timezone.utc).isoformat()
-        cache = Cache(team_id="t1", last_refresh=ts)
-        assert cache.is_fresh()
-
-    def test_stale_when_old(self) -> None:
-        ts = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
-        cache = Cache(team_id="t1", last_refresh=ts)
-        assert not cache.is_fresh()
-
-    def test_not_fresh_when_no_refresh(self) -> None:
-        cache = Cache(team_id="t1")
-        assert not cache.is_fresh()
-
-    def test_not_fresh_on_malformed_ts(self) -> None:
-        cache = Cache(team_id="t1", last_refresh="not-a-date")
-        assert not cache.is_fresh()
+FINGERPRINT = "a1b2c3d4"
+LISTS = [{"id": "901305678901", "name": "modulo-energia"}]
+STATES = {"Backlog": "Backlog", "in progress": "in progress"}
+LABELS = [{"id": "alerts-api", "name": "alerts-api"}]
 
 
-class TestCacheIsComplete:
-    def test_complete_when_all_present(self) -> None:
-        cache = Cache(
-            team_id="t1",
-            projects=({"id": "p1", "name": "proj"},),
-            state_ids={"Todo": "s1"},
+def _ago(days: int) -> str:
+    return (datetime.now(UTC) - timedelta(days=days)).isoformat()
+
+
+def _complete(**overrides) -> Cache:
+    base = dict(
+        fingerprint=FINGERPRINT,
+        space_id="90130521234",
+        space_name="4plus",
+        lists=tuple(LISTS),
+        state_ids=STATES,
+        last_refresh=_ago(1),
+    )
+    base.update(overrides)
+    return Cache(**base)
+
+
+class TestFreshness:
+    def test_recent_is_fresh(self) -> None:
+        assert Cache(last_refresh=_ago(1)).is_fresh()
+
+    def test_expired_is_not(self) -> None:
+        assert not Cache(last_refresh=_ago(CACHE_TTL_DAYS + 1)).is_fresh()
+
+    def test_missing_timestamp_is_not(self) -> None:
+        assert not Cache().is_fresh()
+
+    def test_garbage_timestamp_is_not(self) -> None:
+        assert not Cache(last_refresh="ayer").is_fresh()
+
+
+class TestValidity:
+    def test_complete_fresh_and_matching(self) -> None:
+        assert _complete().is_valid_for(FINGERPRINT)
+
+    def test_a_different_fingerprint_is_never_valid(self) -> None:
+        assert not _complete().is_valid_for("ffffffff")
+
+    def test_incomplete_is_not_valid(self) -> None:
+        assert not _complete(state_ids={}).is_valid_for(FINGERPRINT)
+
+    def test_stale_is_not_valid(self) -> None:
+        assert not _complete(last_refresh=_ago(CACHE_TTL_DAYS + 1)).is_valid_for(FINGERPRINT)
+
+
+class TestLookups:
+    def test_list_name_by_id(self) -> None:
+        assert _complete().list_name("901305678901") == "modulo-energia"
+
+    def test_unknown_list_id(self) -> None:
+        assert _complete().list_name("nope") is None
+
+    def test_label_names(self) -> None:
+        assert _complete(labels=tuple(LABELS)).label_names() == ("alerts-api",)
+
+
+class TestJsonFileRepository:
+    def test_round_trip(self, tmp_path: Path) -> None:
+        repo = JsonFileCacheRepository(tmp_path / "c.json", FINGERPRINT)
+        written = repo.write(
+            space_id="90130521234",
+            space_name="4plus",
+            lists=LISTS,
+            state_ids=STATES,
+            labels=LABELS,
         )
-        assert cache.is_complete()
-
-    def test_incomplete_when_missing_team(self) -> None:
-        cache = Cache(projects=({"id": "p1", "name": "proj"},), state_ids={"Todo": "s1"})
-        assert not cache.is_complete()
-
-    def test_incomplete_when_no_projects(self) -> None:
-        cache = Cache(team_id="t1", state_ids={"Todo": "s1"})
-        assert not cache.is_complete()
-
-    def test_incomplete_when_no_states(self) -> None:
-        cache = Cache(team_id="t1", projects=({"id": "p1", "name": "proj"},))
-        assert not cache.is_complete()
-
-
-class TestJsonFileCacheRepository:
-    def test_load_missing_file_returns_empty_cache(self, tmp_path: Path) -> None:
-        repo = JsonFileCacheRepository(tmp_path / "cache.json")
-        cache = repo.load()
-        assert cache == Cache()
-
-    def test_load_corrupted_file_returns_empty_cache(self, tmp_path: Path) -> None:
-        path = tmp_path / "cache.json"
-        path.write_text("this is not json", encoding="utf-8")
-        repo = JsonFileCacheRepository(path)
-        cache = repo.load()
-        assert cache == Cache()
-
-    def test_write_persists_to_disk(self, tmp_path: Path) -> None:
-        repo = JsonFileCacheRepository(tmp_path / "cache.json")
-        cache = repo.write(
-            team_id="team-1",
-            project_id="proj-1",
-            project_name="My Project",
-            state_ids={"Todo": "state-1", "Done": "state-2"},
-        )
-        assert cache.team_id == "team-1"
-        assert cache.project_id == "proj-1"
-        assert cache.project_name == "My Project"
-        assert cache.state_ids == {"Todo": "state-1", "Done": "state-2"}
-        assert (tmp_path / "cache.json").is_file()
-
-    def test_write_then_load_round_trips(self, tmp_path: Path) -> None:
-        repo = JsonFileCacheRepository(tmp_path / "cache.json")
-        repo.write(
-            team_id="team-1",
-            project_id="proj-1",
-            project_name="My Project",
-            state_ids={"Todo": "state-1"},
-        )
+        assert written.space_id == "90130521234"
         loaded = repo.load()
-        assert loaded.team_id == "team-1"
-        assert loaded.project_id == "proj-1"
-        assert loaded.state_ids == {"Todo": "state-1"}
+        assert loaded.lists == tuple(LISTS)
+        assert loaded.state_ids == STATES
+        assert loaded.labels == tuple(LABELS)
+        assert loaded.fingerprint == FINGERPRINT
 
-    def test_write_multi_persists_projects(self, tmp_path: Path) -> None:
-        repo = JsonFileCacheRepository(tmp_path / "cache.json")
-        projects = [{"id": "p1", "name": "Proj A"}, {"id": "p2", "name": "Proj B"}]
-        cache = repo.write_multi(
-            team_id="team-1",
-            projects=projects,
-            state_ids={"Todo": "s1"},
-        )
-        assert len(cache.projects) == 2
-        assert cache.projects[0] == {"id": "p1", "name": "Proj A"}
+    def test_absent_file_loads_empty(self, tmp_path: Path) -> None:
+        assert JsonFileCacheRepository(tmp_path / "none.json", FINGERPRINT).load() == Cache()
 
-    def test_load_backward_compat_single_project(self, tmp_path: Path) -> None:
-        path = tmp_path / "cache.json"
+    def test_corrupt_file_loads_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.json"
+        path.write_text("{not json", encoding="utf-8")
+        assert JsonFileCacheRepository(path, FINGERPRINT).load() == Cache()
+
+    def test_v1_format_is_ignored_not_migrated(self, tmp_path: Path) -> None:
+        """v1 was keyed by basename, so its binding was never validated."""
+        path = tmp_path / "c.json"
         path.write_text(
             json.dumps(
                 {
-                    "linearTeamId": "t1",
-                    "linearProjectId": "p1",
-                    "linearProjectName": "Proj",
-                    "stateIds": {"Todo": "s1"},
-                    "lastRefresh": datetime.now(timezone.utc).isoformat(),
+                    "linearTeamId": "old-team",
+                    "linearProjectId": "old-project",
+                    "stateIds": {"Todo": "x"},
+                    "lastRefresh": _ago(1),
                 }
             ),
             encoding="utf-8",
         )
-        repo = JsonFileCacheRepository(path)
-        cache = repo.load()
-        assert len(cache.projects) == 1
-        assert cache.projects[0] == {"id": "p1", "name": "Proj"}
+        assert JsonFileCacheRepository(path, FINGERPRINT).load() == Cache()
 
-    def test_creates_parent_dirs(self, tmp_path: Path) -> None:
-        nested = tmp_path / "deep" / "nested" / "cache.json"
-        repo = JsonFileCacheRepository(nested)
-        repo.write(team_id="t1", project_id="p1", project_name="P", state_ids={})
-        assert nested.is_file()
-
-
-class TestInMemoryCacheRepository:
-    def test_load_returns_empty_by_default(self) -> None:
-        repo = InMemoryCacheRepository()
-        assert repo.load() == Cache()
-
-    def test_load_returns_initial_cache(self) -> None:
-        initial = Cache(team_id="t1")
-        repo = InMemoryCacheRepository(initial=initial)
-        assert repo.load().team_id == "t1"
-
-    def test_write_updates_state(self) -> None:
-        repo = InMemoryCacheRepository()
-        repo.write(team_id="t1", project_id="p1", project_name="P", state_ids={"Todo": "s1"})
-        cache = repo.load()
-        assert cache.team_id == "t1"
-        assert cache.state_ids == {"Todo": "s1"}
-
-    def test_write_multi_updates_state(self) -> None:
-        repo = InMemoryCacheRepository()
-        repo.write_multi(
-            team_id="t1",
-            projects=[{"id": "p1", "name": "Proj A"}],
-            state_ids={"Done": "s2"},
+    def test_a_foreign_fingerprint_is_ignored(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.json"
+        JsonFileCacheRepository(path, "other-fp").write(
+            space_id="s", space_name="n", lists=LISTS, state_ids=STATES
         )
-        cache = repo.load()
-        assert len(cache.projects) == 1
-        assert cache.state_ids == {"Done": "s2"}
+        assert JsonFileCacheRepository(path, FINGERPRINT).load() == Cache()
 
-    def test_is_fresh_after_write(self) -> None:
+    def test_creates_missing_directories(self, tmp_path: Path) -> None:
+        path = tmp_path / "deep" / "deeper" / "c.json"
+        JsonFileCacheRepository(path, FINGERPRINT).write(
+            space_id="s", space_name="n", lists=LISTS, state_ids=STATES
+        )
+        assert path.is_file()
+
+    def test_writes_the_current_version(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.json"
+        JsonFileCacheRepository(path, FINGERPRINT).write(
+            space_id="s", space_name="n", lists=LISTS, state_ids=STATES
+        )
+        assert json.loads(path.read_text(encoding="utf-8"))["version"] == CACHE_VERSION
+
+    def test_malformed_list_entries_are_dropped(self, tmp_path: Path) -> None:
+        path = tmp_path / "c.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "version": CACHE_VERSION,
+                    "fingerprint": FINGERPRINT,
+                    "space_id": "s",
+                    "lists": [{"id": "ok", "name": "fine"}, {"id": "missing-name"}, "junk"],
+                    "state_ids": {},
+                    "last_refresh": _ago(1),
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert JsonFileCacheRepository(path, FINGERPRINT).load().lists == (
+            {"id": "ok", "name": "fine"},
+        )
+
+
+class TestInMemoryRepository:
+    def test_starts_empty(self) -> None:
+        assert InMemoryCacheRepository().load() == Cache()
+
+    def test_write_then_load(self) -> None:
         repo = InMemoryCacheRepository()
-        repo.write(team_id="t1", project_id="p1", project_name="P", state_ids={"Todo": "s1"})
-        assert repo.load().is_fresh()
+        repo.write(space_id="s", space_name="n", lists=LISTS, state_ids=STATES, labels=LABELS)
+        loaded = repo.load()
+        assert loaded.space_id == "s"
+        assert loaded.labels == tuple(LABELS)
+
+
+class TestLegacyDiscovery:
+    def test_finds_orphaned_v1_files(self, tmp_path: Path) -> None:
+        old = tmp_path / "proyectos" / "alerts-api"
+        old.mkdir(parents=True)
+        (old / ".clickup-cache.json").write_text("{}", encoding="utf-8")
+        assert find_legacy_caches(tmp_path) == [old / ".clickup-cache.json"]
+
+    def test_no_vault_means_nothing_to_report(self) -> None:
+        assert find_legacy_caches(None) == []
+
+    def test_vault_without_projects_dir(self, tmp_path: Path) -> None:
+        assert find_legacy_caches(tmp_path) == []

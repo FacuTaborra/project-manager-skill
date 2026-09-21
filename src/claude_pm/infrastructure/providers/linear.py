@@ -18,11 +18,21 @@ class LinearProvider:
     that's specific to Personal API Keys, not OAuth tokens.
     """
 
-    def __init__(self, api_key: str, *, http: HttpClient | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        workspace_id: str | None = None,
+        http: HttpClient | None = None,
+    ) -> None:
         self._http = http or HttpClient(
             url=LINEAR_API_URL,
             headers={"Authorization": api_key},
         )
+        # Linear routes by team/project, so the pin is never part of a URL here.
+        # It is accepted anyway so the guard can verify it the same way for both
+        # providers, with no per-provider branching at the call site.
+        self._workspace_id = workspace_id
 
     def _query(self, graphql: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = self._http.post_json({"query": graphql, "variables": variables or {}})
@@ -42,6 +52,17 @@ class LinearProvider:
         if not isinstance(email, str):
             raise ProviderError("viewer.email missing in Linear response")
         return email
+
+    def workspace_ids(self) -> list[str]:
+        return [team.id for team in self.list_workspaces()]
+
+    def list_workspaces(self) -> list[Team]:
+        """Linear has exactly one organization per token."""
+        data = self._query("{ organization { id name urlKey } }")
+        org = data.get("organization") or {}
+        if not org.get("id"):
+            raise ProviderError("organization.id missing in Linear response")
+        return [Team(id=org["id"], name=org.get("name", ""), key=org.get("urlKey", ""))]
 
     def list_teams(self) -> list[Team]:
         data = self._query("{ teams { nodes { id name key } } }")

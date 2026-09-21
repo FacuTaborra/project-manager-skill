@@ -6,26 +6,24 @@ import argparse
 
 from ..application.briefing import BriefingService
 from ..application.setup_flow import SetupService
-from ..config import Config
 from ..exceptions import EXIT_OK, PMError
 from ._helpers import (
     briefing_to_dict,
     build_context,
-    build_provider,
     get_cache_repo,
     issue_to_dict,
+    prepare_read,
     print_json,
 )
 
 
 def run(args: argparse.Namespace) -> int:
-    config = Config.load(args.repo_name)
-    provider = build_provider(config)
+    config, provider = prepare_read(args)
     cache = SetupService(provider, get_cache_repo(config), config).ensure()
 
-    projects = cache.projects
+    projects = cache.lists
     if not projects:
-        raise PMError("Cache is missing project info. Run `pm setup` first.")
+        raise PMError("Cache is missing list info. Run `pm setup --force`.")
 
     context = build_context(config)
     service = BriefingService(provider, context)

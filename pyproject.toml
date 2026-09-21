@@ -7,14 +7,13 @@ name = "claude-pm-skill"
 version = "0.1.0"
 description = "Linear-backed Product Manager skill for Claude Code, with extensible provider architecture."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Facundo Taborra" }]
-keywords = ["claude", "claude-code", "linear", "pm", "issue-tracker", "skill"]
+keywords = ["claude", "claude-code", "linear", "clickup", "pm", "issue-tracker", "skill"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -26,6 +25,7 @@ dependencies = []
 dev = [
     "ruff>=0.4",
     "mypy>=1.8",
+    "pytest>=8.0",
 ]
 
 [project.scripts]
@@ -38,9 +38,18 @@ Issues = "https://github.com/FacuTaborra/claude-pm-skill/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/claude_pm"]
 
+# SKILL.md ships inside the package: installed with `uv tool install` there is no
+# repo on disk for `pm install-skill` to copy it from.
+[tool.hatch.build.targets.wheel.force-include]
+"SKILL.md" = "claude_pm/_skill/SKILL.md"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 extend-exclude = ["pm.py"]
 
 [tool.ruff.lint]
@@ -48,7 +57,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true

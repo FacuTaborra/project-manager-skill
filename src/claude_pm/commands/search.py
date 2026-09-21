@@ -5,23 +5,20 @@ from __future__ import annotations
 import argparse
 
 from ..application.search import SearchService
-from ..application.setup_flow import SetupService
-from ..config import Config
 from ..exceptions import EXIT_OK
-from ._helpers import build_provider, get_cache_repo, issue_to_dict, print_json
+from ._helpers import issue_to_dict, prepare_read, print_json
 
 
 def run(args: argparse.Namespace) -> int:
-    config = Config.load(args.repo_name)
-    provider = build_provider(config)
-    cache = SetupService(provider, get_cache_repo(config), config).ensure()
+    config, provider = prepare_read(args)
 
-    scope = None if args.global_search else cache.project_id
-    matches = SearchService(provider).find_duplicates(args.query, scoped_to_project=scope)
+    project_ids = None if args.global_search else [ref.id for ref in config.scope.lists]
+    matches = SearchService(provider).find_duplicates(args.query, project_ids=project_ids)
 
     print_json(
         {
             "query": args.query,
+            "scope": "workspace" if args.global_search else config.scope.describe(),
             "matches": [issue_to_dict(i) for i in matches],
         }
     )

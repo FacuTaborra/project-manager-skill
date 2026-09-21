@@ -59,13 +59,13 @@ MCP (Model Context Protocol) es la forma "oficial" de conectar Claude con herram
 
 Cada vez que Claude necesita saber tu team ID, project ID, o los estados disponibles, MCP hace una llamada a la API. Si en una sesión necesitás briefing + crear 5 issues, son decenas de llamadas redundantes.
 
-La skill tiene un **cache local** (`.linear-cache.json` / `.clickup-cache.json`). Después del primer uso, las llamadas de discovery desaparecen. Es instantáneo.
+La skill tiene un **cache local**, keyeado por repo + perfil + tablero. Después del primer uso, las llamadas de discovery desaparecen. Es instantáneo.
 
 ### 2. MCP no tiene contexto del repo
 
 MCP no sabe en qué repo estás trabajando. Tenés que decirle explícitamente a Claude qué proyecto de Linear corresponde a qué carpeta.
 
-La skill **auto-detecta el repo** desde el directorio donde corrés Claude Code y lo mapea al proyecto correspondiente en el tracker. Abrís Claude en `alerts-api/` y ya sabe de qué proyecto hablar.
+La skill lee el `.pm.toml` commiteado en el repo donde corrés Claude Code. Abrís Claude en `alerts-api/` y ya sabe de qué proyecto hablar — y, más importante, a cuál *no* puede escribir.
 
 ### 3. MCP te da acceso crudo, no inteligencia
 
@@ -98,34 +98,25 @@ Con MCP tendrías que configurar y mantener dos MCP servers separados con sus pr
 
 ## Cómo se instala
 
-Cada desarrollador instala la skill una sola vez:
+Una vez por máquina:
 
 ```bash
-git clone https://github.com/FacuTaborra/product-manager-skill.git
-cd product-manager-skill
-
-# Linux / macOS
-./install.sh
-
-# Windows
-.\install.ps1
+uv tool install git+https://github.com/FacuTaborra/claude-pm-skill
+pm install-skill --yes
 ```
 
-El installer crea un enlace desde `~/.claude/skills/pm/` al repo clonado y configura los permisos necesarios en Claude Code. Después, cualquier `git pull` actualiza la skill automáticamente — no hay que reinstalar.
+Después, tu token personal va en `~/.claude/pm/credentials.toml` — un perfil por cuenta, así podés tener dos workspaces de ClickUp conviviendo. Cada dev usa su propia key; no hay secretos compartidos.
 
-El único paso manual es poner tu API key personal de Linear o ClickUp en `~/.claude/secrets/`:
-
-```
-LINEAR_API_KEY=lin_api_xxxxxxxx
-```
-
-Cada dev usa su propia key. No hay secretos compartidos.
-
-Verificás que todo está bien con:
+Y una vez por repo:
 
 ```bash
-pm doctor
+cd mi-repo
+pm init      # lista los tableros que ves, elegís, escribe .pm.toml
 ```
+
+Ese `.pm.toml` **se commitea**. El siguiente que clone el repo no configura nada: ya hereda a qué tablero escribe.
+
+Verificás que todo está bien con `pm doctor`, y actualizás con `uv tool upgrade claude-pm-skill`.
 
 ---
 
@@ -138,25 +129,30 @@ El flujo cuando escribís `/pm`:
 ```
 Claude Code
   └── lee SKILL.md (instrucciones para Claude)
-       └── Claude ejecuta: python3 ~/.claude/skills/pm/pm.py briefing
+       └── Claude ejecuta: pm briefing
             └── CLI lee cache → llama API si hace falta → imprime JSON
                  └── Claude parsea JSON y presenta el briefing en tu idioma
 ```
 
 Claude nunca improvisa cómo hablar con la API. Solo interpreta el JSON que el CLI le devuelve.
 
+Y cuando escribe, pasa por un único punto de control que valida el destino contra el `[scope]` del repo. No es una convención: hay un test que falla el build si algún módulo intenta escribir por fuera.
+
 ---
 
 ## Preguntas frecuentes
 
 **¿Funciona si el equipo usa Linear y yo uso ClickUp?**
-Sí. El provider se configura por repo en un archivo `projects.pm`. Cada dev apunta al tracker correcto para cada proyecto.
+Sí. El provider se declara por repo en su `.pm.toml`, y cada uno apunta al perfil de credencial que corresponda.
 
-**¿Claude puede hacer cosas que no quiero sin pedirme permiso?**
-No. La skill nunca crea ni modifica nada sin que el usuario confirme explícitamente. El briefing es solo lectura. El plan de issues se muestra primero y se crea solo después de tu "sí".
+**¿Claude puede escribir en un tablero que no debe?**
+No, y esto está garantizado por código, no por instrucciones. Cada repo declara en `.pm.toml` el workspace, space y listas a los que puede escribir; cualquier otra cosa aborta con exit 4 — incluido intentar modificar una task que vive en otro tablero. Tampoco puede crear spaces ni listas: eso requiere un flag explícito que está fuera de su contrato.
 
-**¿Qué pasa si el proyecto de Linear no se llama igual que el repo?**
-Podés configurar el ID explícitamente con `pm setup --project-id <id>`, o declararlo en el archivo `projects.pm` del repo.
+**¿Y crear issues sin que yo lo pida?**
+El briefing es solo lectura. El plan de issues se muestra primero y se crea después de tu "sí". Si querés verlo antes de confirmar, cualquier comando que escribe acepta `--dry-run`, que te muestra el destino resuelto por nombre y el payload exacto sin tocar la API.
+
+**¿Qué pasa si el proyecto no se llama igual que el repo?**
+No importa: el binding es por ID, no por nombre. `pm init` te lista lo que hay y elegís.
 
 **¿Los tickets que crea Claude son buenos?**
 Depende del contexto que le des. Si le decís "agreguemos webhooks salientes", va a generar issues razonables. Si además tenés un vault de Obsidian con notas del proyecto, Claude las lee y genera issues con contexto real del codebase. Siempre podés editar la propuesta antes de confirmar.

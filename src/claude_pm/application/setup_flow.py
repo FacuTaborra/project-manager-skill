@@ -1,35 +1,28 @@
-"""SetupService — discover team/project/states and persist them in cache."""
+"""SetupService — verify the declared scope against the tracker and cache its ids.
+
+Discovery is gone. `.pm.toml` already holds the ids, so this no longer guesses
+which board a repo belongs to; it confirms that the declared board still exists
+and caches the derived bits (states, labels) that change rarely.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..config import Config
-from ..domain.models import Project, Team
 from ..domain.ports import IssueProvider
-from ..exceptions import NeedsChoice, PMError
+from ..exceptions import PMError
 from ..infrastructure.cache import Cache, CacheRepository
 
 
 @dataclass
-class SetupOptions:
-    force: bool = False
-    team_id_override: str | None = None
-    project_id_override: str | None = None
-    create_project_if_missing: bool = False
+class SetupResult:
+    cache: Cache
+    warnings: list[str] = field(default_factory=list)
+    refreshed: bool = False
 
 
 class SetupService:
-    """Resolve `(team, project, stateIds)` and write them to the cache.
-
-    Behavior:
-      - If the cache is fresh (≤ 30 days) and complete, we no-op.
-      - If a team/project override is provided, we use it (and revalidate state IDs).
-      - If multiple teams exist and no override, we raise NeedsChoice for the CLI.
-      - If no project matches the repo name, we either create one (when
-        `create_project_if_missing=True`) or raise NeedsChoice asking the user.
-    """
-
     def __init__(
         self, provider: IssueProvider, cache_repo: CacheRepository, config: Config
     ) -> None:
@@ -37,116 +30,59 @@ class SetupService:
         self.cache_repo = cache_repo
         self.config = config
 
-    def ensure(self, options: SetupOptions | None = None) -> Cache:
-        opts = options or SetupOptions()
+    def ensure(self, *, force: bool = False) -> Cache:
+        return self.verify(force=force).cache
+
+    def verify(self, *, force: bool = False) -> SetupResult:
         cache = self.cache_repo.load()
+        if not force and cache.is_valid_for(self.config.fingerprint):
+            return SetupResult(cache=cache)
 
-        if self.config.pm_file.projects:
-            return self._setup_from_pm_file(opts, cache)
+        scope = self.config.scope
+        warnings: list[str] = []
 
-        if not opts.force and cache.is_complete() and cache.is_fresh():
-            return cache
-
-        team_id = self._resolve_team(opts, cache)
-        project = self._resolve_project(team_id, opts, cache)
-        state_ids = {s.name: s.id for s in self.provider.list_states(team_id)}
-        return self.cache_repo.write(
-            team_id=team_id,
-            project_id=project.id,
-            project_name=project.name,
-            state_ids=state_ids,
-        )
-
-    def _setup_from_pm_file(self, opts: SetupOptions, cache: Cache) -> Cache:
-        pm = self.config.pm_file
-
-        if not opts.force and cache.team_id and cache.state_ids and cache.is_fresh():
-            cached_names = {p["name"].lower() for p in cache.projects}
-            pm_names = {n.lower() for n in pm.projects}
-            if cached_names == pm_names:
-                return cache
-
-        teams = self.provider.list_teams()
-        if not teams:
-            raise PMError("No teams/spaces found in this workspace.")
-
-        if pm.space:
-            matched = [t for t in teams if t.name.lower() == pm.space.lower()]
-            if not matched:
-                available = ", ".join(t.name for t in teams)
-                raise PMError(f"Space '{pm.space}' not found. Available: {available}")
-            team_id = matched[0].id
-        elif len(teams) == 1:
-            team_id = teams[0].id
-        else:
-            raise NeedsChoice(
-                "Multiple teams found and no 'space' set in projects.pm. Pick one and re-run with --team-id <ID>.",
-                {"action": "choose-team", "teams": [_team_dict(t) for t in teams]},
+        spaces = self.provider.list_teams()
+        space = next((s for s in spaces if s.id == scope.space_id), None)
+        if space is None:
+            available = ", ".join(f"{s.name} ({s.id})" for s in spaces) or "(none)"
+            raise PMError(
+                f"Space {scope.space_id} declared in {self.config.pm_file.path} does not exist "
+                f"in this workspace. Available: {available}. Re-run `pm init --force`."
+            )
+        if scope.space_name and space.name.lower() != scope.space_name.lower():
+            warnings.append(
+                f"Space {scope.space_id} is now named {space.name!r}, "
+                f"but {self.config.pm_file.path} says {scope.space_name!r}."
             )
 
-        available_projects = self.provider.list_projects(team_id)
-        name_to_proj = {p.name.lower(): p for p in available_projects}
+        projects = {p.id: p for p in self.provider.list_projects(scope.space_id)}
         resolved: list[dict[str, str]] = []
-        for name in pm.projects:
-            proj = name_to_proj.get(name.lower())
-            if not proj:
-                avail = ", ".join(p.name for p in available_projects)
-                raise PMError(f"Project '{name}' not found in space. Available: {avail}")
-            resolved.append({"id": proj.id, "name": proj.name})
+        for ref in scope.lists:
+            project = projects.get(ref.id)
+            if project is None:
+                available = ", ".join(f"{p.name} ({p.id})" for p in projects.values()) or "(none)"
+                raise PMError(
+                    f"List {ref.id} ({ref.name or 'unnamed'}) declared in "
+                    f"{self.config.pm_file.path} is not in space {space.name}. "
+                    f"Available: {available}. Re-run `pm init --force`."
+                )
+            if ref.name and project.name.lower() != ref.name.lower():
+                warnings.append(
+                    f"List {ref.id} is now named {project.name!r}, "
+                    f"but {self.config.pm_file.path} says {ref.name!r}."
+                )
+            resolved.append({"id": project.id, "name": project.name})
 
-        state_ids = {s.name: s.id for s in self.provider.list_states(team_id)}
-        return self.cache_repo.write_multi(team_id=team_id, projects=resolved, state_ids=state_ids)
+        states = {s.name: s.id for s in self.provider.list_states(scope.space_id)}
+        labels = [
+            {"id": lbl.id, "name": lbl.name} for lbl in self.provider.list_labels(scope.space_id)
+        ]
 
-    # -- internals -----------------------------------------------------------
-
-    def _resolve_team(self, opts: SetupOptions, cache: Cache) -> str:
-        override = opts.team_id_override or self.config.team_id_override or cache.team_id
-        teams = self.provider.list_teams()
-        if not teams:
-            raise PMError("Workspace has no teams. Create one in your tracker first.")
-
-        if override:
-            if not any(t.id == override for t in teams):
-                raise PMError(f"Team id {override} not found in this workspace.")
-            return override
-        if len(teams) == 1:
-            return teams[0].id
-        raise NeedsChoice(
-            "Multiple teams found. Pick one and re-run with --team-id <ID>.",
-            {"action": "choose-team", "teams": [_team_dict(t) for t in teams]},
+        written = self.cache_repo.write(
+            space_id=space.id,
+            space_name=space.name,
+            lists=resolved,
+            state_ids=states,
+            labels=labels,
         )
-
-    def _resolve_project(self, team_id: str, opts: SetupOptions, cache: Cache) -> Project:
-        override = opts.project_id_override or self.config.project_id_override or cache.project_id
-        if override:
-            return Project(id=override, name=cache.project_name or self.config.repo_name)
-
-        candidates = self.provider.find_projects(self.config.repo_name)
-        exact = [p for p in candidates if p.name.lower() == self.config.repo_name.lower()]
-        if exact:
-            return exact[0]
-        if len(candidates) == 1:
-            return candidates[0]
-        if len(candidates) > 1:
-            raise NeedsChoice(
-                f"Multiple projects match '{self.config.repo_name}'. "
-                f"Pick one and re-run with --project-id <ID>.",
-                {
-                    "action": "choose-project",
-                    "projects": [{"id": p.id, "name": p.name} for p in candidates],
-                },
-            )
-
-        # No project exists.
-        if opts.create_project_if_missing:
-            return self.provider.create_project(self.config.repo_name, team_id)
-        raise NeedsChoice(
-            f"No project matches '{self.config.repo_name}' in this team. "
-            f"Re-run with --create-project to create one named '{self.config.repo_name}', "
-            f"or with --project-id <ID> to use an existing one with a different name.",
-            {"action": "create-or-pick-project", "repo_name": self.config.repo_name},
-        )
-
-
-def _team_dict(team: Team) -> dict[str, str]:
-    return {"id": team.id, "name": team.name, "key": team.key}
+        return SetupResult(cache=written, warnings=warnings, refreshed=True)

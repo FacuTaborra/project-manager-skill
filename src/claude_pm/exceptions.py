@@ -5,6 +5,7 @@ Exit codes:
     1 — fatal error (PMError, ConfigError, ProviderError without exit override)
     2 — needs user choice (NeedsChoice; payload is JSON-printed to stdout)
     3 — cache invalid / requires `setup --force`
+    4 — refused: the write targets something outside this repo's declared scope
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_NEEDS_CHOICE = 2
 EXIT_CACHE_INVALID = 3
+EXIT_SCOPE = 4
 
 
 class PMError(Exception):
@@ -31,6 +33,17 @@ class ConfigError(PMError):
 
 class ProviderError(PMError):
     """An issue-tracker adapter (Linear, GitHub, ...) failed."""
+
+
+class ScopeViolation(PMError):
+    """A mutation targeted something outside the repo's declared scope.
+
+    Raised only by `application.scope`, which is the single place allowed to call
+    the provider's mutating methods.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, exit_code=EXIT_SCOPE)
 
 
 class NeedsChoice(PMError):

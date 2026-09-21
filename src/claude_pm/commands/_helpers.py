@@ -5,18 +5,24 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..application.scope import DryRun, ScopeGuard, build_guard, verify_workspace_pin
+from ..application.setup_flow import SetupService
 from ..config import Config
 from ..domain.models import Briefing, Issue
 from ..domain.ports import ContextProvider, IssueProvider
-from ..infrastructure.cache import Cache, JsonFileCacheRepository
+from ..infrastructure.cache import JsonFileCacheRepository
 from ..infrastructure.context.null import NullContext
 from ..infrastructure.context.obsidian import ObsidianVaultContext
 from ..infrastructure.providers._registry import get_provider
 
 
 def build_provider(config: Config) -> IssueProvider:
-    pak = config.require_pak()
-    return get_provider(config.provider_name, api_key=pak)
+    """Provider pinned to the workspace declared in `.pm.toml`."""
+    return get_provider(
+        config.provider_name,
+        api_key=config.require_pak(),
+        workspace_id=config.scope.workspace_id,
+    )
 
 
 def build_context(config: Config) -> ContextProvider:
@@ -26,11 +32,34 @@ def build_context(config: Config) -> ContextProvider:
 
 
 def get_cache_repo(config: Config) -> JsonFileCacheRepository:
-    return JsonFileCacheRepository(config.cache_path)
+    return JsonFileCacheRepository(config.cache_path, config.fingerprint)
 
 
-def load_cache(config: Config) -> Cache:
-    return get_cache_repo(config).load()
+def prepare_write(args: Any) -> tuple[Config, IssueProvider, ScopeGuard]:
+    """Everything a mutating command needs, including the scope check.
+
+    Commands never touch the provider's mutating methods themselves — they go
+    through the guard this returns.
+    """
+    config = Config.load(args.repo_name, profile_override=getattr(args, "profile", None))
+    provider = build_provider(config)
+    verify_workspace_pin(config, provider)
+    cache = SetupService(provider, get_cache_repo(config), config).ensure()
+    guard = build_guard(
+        config,
+        provider,
+        cache,
+        dry_run=getattr(args, "dry_run", False),
+        allow_structural=getattr(args, "allow_structural_changes", False),
+        verify_pin=False,
+    )
+    return config, provider, guard
+
+
+def prepare_read(args: Any) -> tuple[Config, IssueProvider]:
+    """Reads skip the guard entirely — they pay no verification cost."""
+    config = Config.load(args.repo_name, profile_override=getattr(args, "profile", None))
+    return config, build_provider(config)
 
 
 def issue_to_dict(issue: Issue) -> dict[str, Any]:
@@ -58,6 +87,14 @@ def briefing_to_dict(briefing: Briefing) -> dict[str, Any]:
         },
         "total_open": briefing.total_open,
     }
+
+
+def print_result(outcome: Any, render: Any) -> None:
+    """Print a dry-run preview, or the real result via `render`."""
+    if isinstance(outcome, DryRun):
+        print_json(outcome.to_dict())
+    else:
+        print_json(render(outcome))
 
 
 def print_json(payload: dict[str, Any]) -> None:

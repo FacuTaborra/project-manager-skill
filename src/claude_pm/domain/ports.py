@@ -19,6 +19,19 @@ class IssueProvider(Protocol):
         """Return the email of the authenticated user (used by `doctor`)."""
         ...
 
+    def workspace_ids(self) -> list[str]:
+        """Workspaces/organizations this token can reach.
+
+        Linear returns its single `organization.id`, ClickUp every team id. The
+        scope guard compares this against the workspace declared in `.pm.toml`,
+        so a rotated or mismatched token is caught before anything is written.
+        """
+        ...
+
+    def list_workspaces(self) -> list[Team]:
+        """Workspaces with their names — discovery only, for `pm init`."""
+        ...
+
     def list_teams(self) -> list[Team]:
         """List all teams the authenticated user belongs to."""
         ...

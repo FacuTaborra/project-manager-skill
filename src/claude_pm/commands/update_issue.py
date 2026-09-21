@@ -1,20 +1,17 @@
-"""`update-issue` — update title, state, priority, or assignee of an existing issue."""
+"""`update-issue` — update an issue, but only one this repo is allowed to touch."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from ..application.setup_flow import SetupService
-from ..config import Config
 from ..domain.models import IssueUpdate
 from ..exceptions import EXIT_OK, PMError
-from ._helpers import build_provider, get_cache_repo, print_json
+from ._helpers import prepare_write, print_result
 
 
 def run(args: argparse.Namespace) -> int:
-    config = Config.load(args.repo_name)
-    provider = build_provider(config)
+    _, _, guard = prepare_write(args)
 
     description: str | None = args.description
     if args.description_file:
@@ -23,20 +20,8 @@ def run(args: argparse.Namespace) -> int:
             raise PMError(f"Description file not found: {path}")
         description = path.read_text(encoding="utf-8")
 
-    state_id: str | None = None
-    if args.state:
-        cache = SetupService(provider, get_cache_repo(config), config).ensure()
-        state_id = cache.state_ids.get(args.state)
-        if not state_id:
-            available = ", ".join(cache.state_ids.keys())
-            raise PMError(f"State '{args.state}' not found. Available: {available}")
-
-    assignee_id: str | None = None
-    if args.assignee:
-        user = provider.resolve_user_by_email(args.assignee)
-        if not user:
-            raise PMError(f"No member with email '{args.assignee}'.")
-        assignee_id = user.id
+    state_id = guard.resolve_state_id(args.state)
+    assignee_id = guard.resolve_assignee_id(args.assignee)
 
     update = IssueUpdate(
         issue_id=args.id,
@@ -46,14 +31,22 @@ def run(args: argparse.Namespace) -> int:
         priority=args.priority,
         assignee_id=assignee_id,
     )
-    issue = provider.update_issue(update)
-    print_json(
-        {
+    if not any(
+        value is not None
+        for value in (update.title, update.description, state_id, update.priority, assignee_id)
+    ):
+        raise PMError(
+            "Nothing to update — pass at least one of --title/--description/--state/--priority/--assignee."
+        )
+
+    print_result(
+        guard.update_issue(update),
+        lambda issue: {
             "ok": True,
             "identifier": issue.identifier,
             "title": issue.title,
             "state": issue.state.name,
             "url": issue.url,
-        }
+        },
     )
     return EXIT_OK

@@ -1,0 +1,22 @@
+# Copy of what `pm init` writes. Committed in every repo that uses pm.
+# It holds no secrets: `profile` names a credential in ~/.claude/pm/credentials.toml.
+
+version  = 1
+provider = "clickup"          # linear | clickup
+profile  = "4plus"
+
+# The allowlist. Nothing outside it can be written to.
+[scope]
+workspace_id   = "9013377000"      # ClickUp team id / Linear organization id
+workspace_name = "Hemisphere"      # expected name — drift check and readable errors only
+space_id       = "90130521234"     # ClickUp space / Linear team
+space_name     = "4plus"
+lists = [
+  { id = "901305678901", name = "modulo-energia" },
+]
+
+# Applied to every issue created from this repo.
+[defaults]
+labels   = ["alerts-api"]
+state    = "Backlog"
+priority = 3
