@@ -42,8 +42,11 @@ def run(args: argparse.Namespace) -> int:
             f"The 'installed' skill would be a working tree that changes as you develop, and "
             f"writing here would touch that checkout.\n"
             f"Remove the link first, then re-run:\n"
-            f'  Windows:      rmdir "{SKILL_DIR}"\n'
-            f'  Linux/macOS:  rm "{SKILL_DIR}"'
+            f'  Windows:      cmd /c rmdir "{SKILL_DIR}"\n'
+            f'  Linux/macOS:  rm "{SKILL_DIR}"\n'
+            f"Use cmd's rmdir, which unlinks. In PowerShell `rmdir` is an alias for "
+            f"Remove-Item, which has followed junctions and deleted the target's contents — "
+            f"here, your checkout."
         )
 
     if pending and not args.yes and not args.skip_permissions:
