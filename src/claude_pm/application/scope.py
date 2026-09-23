@@ -15,13 +15,13 @@ model; this is a precondition.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
 
 from ..config import Config
 from ..domain.models import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
-from ..domain.ports import IssueProvider
+from ..domain.ports import DocProvider, IssueProvider
 from ..exceptions import NeedsChoice, PMError, ScopeViolation
 from ..infrastructure.cache import Cache
 from ..pmfile import Defaults, ScopeSpec
@@ -48,6 +48,8 @@ class DryRun:
 
 Outcome = Issue | Doc | Project | Team | DryRun
 
+T = TypeVar("T")
+
 
 @dataclass
 class ScopeGuard:
@@ -57,7 +59,7 @@ class ScopeGuard:
     defaults: Defaults = field(default_factory=Defaults)
     dry_run: bool = False
     allow_structural: bool = False
-    _owners: dict[str, tuple[str, str]] = field(default_factory=dict, init=False)
+    _owners: dict[str, tuple[str | None, str]] = field(default_factory=dict, init=False)
 
     # -- the chokepoint ------------------------------------------------------
 
@@ -106,9 +108,7 @@ class ScopeGuard:
         if issue_id not in self._owners:
             issue = self.provider.get_issue(issue_id)
             project = issue.project
-            self._owners[issue_id] = (
-                (project.id, project.name) if project else (None, "")  # type: ignore[assignment]
-            )
+            self._owners[issue_id] = (project.id, project.name) if project else (None, "")
         return self._owners[issue_id]
 
     def _require_structural(self, action: str) -> None:
@@ -117,6 +117,42 @@ class ScopeGuard:
                 f"{action} changes the board's structure and is off by default. "
                 f"Re-run with --allow-structural-changes if that is really what you want."
             )
+
+    def _mutate(
+        self,
+        action: str,
+        *,
+        target: str | None,
+        payload: dict[str, Any],
+        call: Callable[[], T],
+    ) -> T | DryRun:
+        """Run the write, or describe it instead when this is a dry run.
+
+        Every public write ends here, after its own check has passed. Keeping
+        the branch in one place is what makes `--dry-run` total: a new write
+        cannot forget it without also skipping this helper, which review sees.
+        """
+        if self.dry_run:
+            return DryRun(
+                action=action,
+                destination=self._describe(target),
+                list_id=target,
+                payload=payload,
+            )
+        return call()
+
+    def _docs(self, action: str) -> DocProvider:
+        """The provider as a docs-capable one, or a refusal that says why.
+
+        Checked in dry runs too, so a preview never promises a write the
+        tracker cannot perform.
+        """
+        if not isinstance(self.provider, DocProvider):
+            raise PMError(
+                f"{action} needs a tracker with Docs, and this repo's provider has none. "
+                f"Docs are supported on ClickUp only."
+            )
+        return self.provider
 
     def _describe(self, list_id: str | None) -> str:
         name = self.cache.list_name(list_id or "") if list_id else None
@@ -156,50 +192,78 @@ class ScopeGuard:
             assignee_id=self.resolve_assignee_id(assignee_email),
             label_ids=self.resolve_label_ids(label_names),
         )
+        return self._mutate(
+            "create-issue",
+            target=target,
+            payload={
+                "title": title,
+                "description": description,
+                "state": state_name,
+                "priority": effective_priority,
+                "assignee": assignee_email,
+                "labels": list(label_names),
+            },
+            call=lambda: self.provider.create_issue(draft),
+        )
 
-        if self.dry_run:
-            return DryRun(
-                action="create-issue",
-                destination=self._describe(target),
-                list_id=target,
-                payload={
-                    "title": title,
-                    "description": description,
-                    "state": state_name,
-                    "priority": effective_priority,
-                    "assignee": assignee_email,
-                    "labels": list(label_names),
-                },
-            )
-        return self.provider.create_issue(draft)
+    def update_issue(
+        self,
+        *,
+        issue_id: str,
+        title: str | None = None,
+        description: str | None = None,
+        state: str | None = None,
+        priority: int | None = None,
+        assignee_email: str | None = None,
+    ) -> Issue | DryRun:
+        """Same shape as `create_issue`: names in, ids resolved here.
 
-    def update_issue(self, update: IssueUpdate) -> Issue | DryRun:
-        target = self._authorize("update-issue", issue_id=update.issue_id)
-        if self.dry_run:
-            return DryRun(
-                action="update-issue",
-                destination=self._describe(target),
-                list_id=target,
-                payload={
-                    "id": update.issue_id,
-                    "title": update.title,
-                    "description": update.description,
-                    "state_id": update.state_id,
-                    "priority": update.priority,
-                    "assignee_id": update.assignee_id,
-                },
+        The "nothing to update" check runs first because it needs no API call,
+        and a request that changes nothing should not cost an ownership lookup.
+        """
+        requested = (title, description, state or None, priority, assignee_email or None)
+        if all(value is None for value in requested):
+            raise PMError(
+                "Nothing to update. Pass at least one of "
+                "--title/--description/--state/--priority/--assignee."
             )
-        return self.provider.update_issue(update)
+
+        target = self._authorize("update-issue", issue_id=issue_id)
+        update = IssueUpdate(
+            issue_id=issue_id,
+            title=title,
+            description=description,
+            state_id=self.resolve_state_id(state),
+            priority=priority,
+            assignee_id=self.resolve_assignee_id(assignee_email),
+        )
+        return self._mutate(
+            "update-issue",
+            target=target,
+            payload={
+                "id": issue_id,
+                "title": title,
+                "description": description,
+                "state": state,
+                "priority": priority,
+                "assignee": assignee_email,
+            },
+            call=lambda: self.provider.update_issue(update),
+        )
 
     def create_doc(self, *, title: str, content: str | None) -> Doc | DryRun:
-        if self.dry_run:
-            return DryRun(
-                action="create-doc",
-                destination=self._describe(None),
-                list_id=None,
-                payload={"title": title, "has_content": content is not None},
-            )
-        return self.provider.create_doc(title, content)  # type: ignore[attr-defined,no-any-return]
+        """Docs live at workspace level, so there is no list to authorize.
+
+        The workspace pin checked when the guard was built is what keeps them
+        in the right account.
+        """
+        docs = self._docs("create-doc")
+        return self._mutate(
+            "create-doc",
+            target=None,
+            payload={"title": title, "has_content": content is not None},
+            call=lambda: docs.create_doc(title, content),
+        )
 
     def update_doc(
         self,
@@ -209,40 +273,38 @@ class ScopeGuard:
         content: str | None = None,
         page_id: str | None = None,
     ) -> Doc | DryRun:
-        if self.dry_run:
-            return DryRun(
-                action="update-doc",
-                destination=self._describe(None),
-                list_id=None,
-                payload={"doc_id": doc_id, "title": title, "page_id": page_id},
-            )
-        return self.provider.update_doc(  # type: ignore[attr-defined,no-any-return]
-            doc_id, title=title, content=content, page_id=page_id
+        docs = self._docs("update-doc")
+        return self._mutate(
+            "update-doc",
+            target=None,
+            payload={
+                "doc_id": doc_id,
+                "title": title,
+                "page_id": page_id,
+                "has_content": content is not None,
+            },
+            call=lambda: docs.update_doc(doc_id, title=title, content=content, page_id=page_id),
         )
 
     # -- structural writes, off by default -----------------------------------
 
     def create_list(self, name: str) -> Project | DryRun:
         self._require_structural("create-project")
-        if self.dry_run:
-            return DryRun(
-                action="create-project",
-                destination=self._describe(None),
-                list_id=None,
-                payload={"name": name, "space_id": self.scope.space_id},
-            )
-        return self.provider.create_project(name, self.scope.space_id)
+        return self._mutate(
+            "create-project",
+            target=None,
+            payload={"name": name, "space_id": self.scope.space_id},
+            call=lambda: self.provider.create_project(name, self.scope.space_id),
+        )
 
     def create_space(self, name: str) -> Team | DryRun:
         self._require_structural("create-team")
-        if self.dry_run:
-            return DryRun(
-                action="create-team",
-                destination=self._describe(None),
-                list_id=None,
-                payload={"name": name},
-            )
-        return self.provider.create_team(name)
+        return self._mutate(
+            "create-team",
+            target=None,
+            payload={"name": name},
+            call=lambda: self.provider.create_team(name),
+        )
 
     # -- resolution helpers (all reads) --------------------------------------
 
