@@ -95,7 +95,7 @@ class TestWizardLoop:
         assert len(seen) == 3
 
     def test_an_unknown_action_is_reported_not_ignored(self) -> None:
-        with pytest.raises(PMError, match="de forma interactiva"):
+        with pytest.raises(PMError, match="interactively"):
             init._answer(_args(), {"action": "choose-something-new"})
 
 

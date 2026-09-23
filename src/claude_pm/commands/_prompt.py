@@ -40,7 +40,7 @@ def ask(question: str, *, default: str | None = None) -> str:
             return answer
         if default is not None:
             return default
-        print("  Hace falta una respuesta.")
+        print("  An answer is required.")
 
 
 def ask_secret(question: str) -> str:
@@ -49,18 +49,18 @@ def ask_secret(question: str) -> str:
         try:
             answer = getpass.getpass(f"{question}: ").strip()
         except (EOFError, KeyboardInterrupt):
-            raise PMError("Cancelado.") from None
+            raise PMError("Cancelled.") from None
         if answer:
             return answer
-        print("  Hace falta una respuesta.")
+        print("  An answer is required.")
 
 
 def choose(question: str, options: Sequence[Choice], *, multi: bool = False) -> list[str]:
     """Numbered menu. Returns the chosen ids, in the order they were offered."""
     if not options:
-        raise PMError(f"{question} — no hay opciones para elegir.")
+        raise PMError(f"{question} — no options to choose from.")
     if len(options) == 1 and not multi:
-        print(f"\n{question}\n  → {options[0].label} (única opción)")
+        print(f"\n{question}\n  → {options[0].label} (only option)")
         return [options[0].id]
 
     print(f"\n{question}")
@@ -70,12 +70,12 @@ def choose(question: str, options: Sequence[Choice], *, multi: bool = False) -> 
         detail = f"  {option.detail}" if option.detail else ""
         print(f"  {index:>{width}}) {option.label:<{pad}}{detail}")
 
-    hint = "números separados por coma, o 'todos'" if multi else "número"
+    hint = "comma-separated numbers, or 'all'" if multi else "number"
     while True:
-        picked = _parse_selection(_read(f"> elegí ({hint}): "), len(options), multi=multi)
+        picked = _parse_selection(_read(f"> choose ({hint}): "), len(options), multi=multi)
         if picked:
             return [options[i].id for i in picked]
-        print("  No entendí. Probá de nuevo.")
+        print("  Didn't understand that. Try again.")
 
 
 def _parse_selection(raw: str, count: int, *, multi: bool) -> list[int]:
@@ -105,4 +105,4 @@ def _read(prompt: str) -> str:
     try:
         return input(prompt)
     except (EOFError, KeyboardInterrupt):
-        raise PMError("Cancelado.") from None
+        raise PMError("Cancelled.") from None

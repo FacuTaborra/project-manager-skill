@@ -28,11 +28,11 @@ class PMError(Exception):
 
 
 class ConfigError(PMError):
-    """Configuration is missing or malformed (PAK file, env vars, paths)."""
+    """Configuration is missing or malformed (.pm.toml, credentials.toml, paths)."""
 
 
 class ProviderError(PMError):
-    """An issue-tracker adapter (Linear, GitHub, ...) failed."""
+    """An issue-tracker adapter (Linear, ClickUp) failed."""
 
 
 class ScopeViolation(PMError):

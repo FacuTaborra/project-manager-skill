@@ -19,19 +19,19 @@ WHERE_TO_GET_ONE = {
 
 def ask_provider() -> ProviderType:
     picked = choose(
-        "¿Qué tracker usa este repo?",
+        "Which tracker does this repo use?",
         [Choice(id=p.value, label=p.value, detail=WHERE_TO_GET_ONE[p]) for p in ProviderType],
     )
     return ProviderType(picked[0])
 
 
 def report(name: str, email: str, reachable: list[Team], workspace_id: str | None) -> None:
-    print(f"  ✓ token válido — autenticado como {email}", file=sys.stderr)
+    print(f"  ✓ token valid — authenticated as {email}", file=sys.stderr)
     print(
-        f"  ✓ alcanza {len(reachable)} workspace(s): "
+        f"  ✓ reaches {len(reachable)} workspace(s): "
         + ", ".join(f"{w.name} ({w.id})" for w in reachable),
         file=sys.stderr,
     )
     if workspace_id:
-        print(f"  ✓ perfil fijado a {workspace_id}", file=sys.stderr)
-    print(f"  ✓ perfil {name!r} escrito en {credentials_path()}", file=sys.stderr)
+        print(f"  ✓ profile pinned to {workspace_id}", file=sys.stderr)
+    print(f"  ✓ profile {name!r} written to {credentials_path()}", file=sys.stderr)

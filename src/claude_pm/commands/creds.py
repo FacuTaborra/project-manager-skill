@@ -53,13 +53,13 @@ def run_add(args: argparse.Namespace) -> int:
                 f"No token given. Pass --token, or set {_ENV_NEW_TOKEN} to keep it out of "
                 f"your shell history."
             )
-        token = ask_secret(f"Token de {provider_type.value} ({WHERE_TO_GET_ONE[provider_type]})")
+        token = ask_secret(f"{provider_type.value} token ({WHERE_TO_GET_ONE[provider_type]})")
 
     name = args.name
     if not name:
         if not can_prompt:
             raise PMError("Missing --name for the profile.")
-        name = ask("Nombre para este perfil", default=provider_type.value)
+        name = ask("Name for this profile", default=provider_type.value)
 
     email, reachable = verify_token(provider_type, token.strip())
     workspace_id = pick_workspace(args.workspace_id, reachable)

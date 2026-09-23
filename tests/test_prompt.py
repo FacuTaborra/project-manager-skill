@@ -50,30 +50,30 @@ class TestMultiSelection:
 
 class TestChoose:
     def test_a_single_option_is_taken_without_asking(self, capsys) -> None:
-        assert choose("¿cuál?", OPTIONS[:1]) == ["a"]
-        assert "única opción" in capsys.readouterr().out
+        assert choose("which one?", OPTIONS[:1]) == ["a"]
+        assert "only option" in capsys.readouterr().out
 
     def test_multi_still_asks_even_with_one_option(self, monkeypatch) -> None:
         monkeypatch.setattr("builtins.input", lambda _: "1")
-        assert choose("¿cuáles?", OPTIONS[:1], multi=True) == ["a"]
+        assert choose("which ones?", OPTIONS[:1], multi=True) == ["a"]
 
     def test_it_reasks_until_the_answer_parses(self, monkeypatch, capsys) -> None:
-        answers = iter(["9", "hola", "2"])
+        answers = iter(["9", "nope", "2"])
         monkeypatch.setattr("builtins.input", lambda _: next(answers))
-        assert choose("¿cuál?", OPTIONS) == ["b"]
-        assert capsys.readouterr().out.count("No entendí") == 2
+        assert choose("which one?", OPTIONS) == ["b"]
+        assert capsys.readouterr().out.count("Didn't understand") == 2
 
     def test_no_options_is_an_error_not_a_hang(self) -> None:
-        with pytest.raises(PMError, match="no hay opciones"):
-            choose("¿cuál?", [])
+        with pytest.raises(PMError, match="no options"):
+            choose("which one?", [])
 
     def test_eof_is_a_clean_cancel(self, monkeypatch) -> None:
         def raise_eof(_: str) -> str:
             raise EOFError
 
         monkeypatch.setattr("builtins.input", raise_eof)
-        with pytest.raises(PMError, match="Cancelado"):
-            choose("¿cuál?", OPTIONS)
+        with pytest.raises(PMError, match="Cancelled"):
+            choose("which one?", OPTIONS)
 
 
 class TestInteractiveDetection:

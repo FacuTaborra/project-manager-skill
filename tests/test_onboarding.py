@@ -124,7 +124,7 @@ class TestEdgeCases:
         stage.add_permissions()
         stage.add_credentials()
         step = next_step(stage.outside)
-        assert "repo git" in step.why
+        assert "git repo" in step.why
         assert step.command.startswith("cd ")
 
     def test_the_token_step_says_where_to_get_one(self, stage) -> None:
@@ -140,9 +140,9 @@ class TestEdgeCases:
 
 class TestRender:
     def test_shows_the_command_on_its_own_line(self) -> None:
-        rendered = Step(why="hacer algo", command="pm algo").render()
-        assert "▸ Próximo paso: hacer algo" in rendered
-        assert "      pm algo" in rendered
+        rendered = Step(why="do something", command="pm something").render()
+        assert "▸ Next step: do something" in rendered
+        assert "      pm something" in rendered
 
     def test_multi_line_hints_stay_indented(self) -> None:
         rendered = Step(why="w", command="c", hint="uno\ndos").render()

@@ -287,7 +287,7 @@ def _to_issue(
             project = Project(id=lst["id"], name=lst["name"])
     return Issue(
         identifier=str(task.get("id", "")),
-        title=task.get("name", "(sin título)"),
+        title=task.get("name", "(untitled)"),
         state=state,
         priority=_map_priority(task.get("priority")),
         url=task.get("url"),
