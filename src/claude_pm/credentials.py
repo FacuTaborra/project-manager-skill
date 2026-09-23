@@ -98,13 +98,24 @@ def load_profile(
             )
         return match
 
-    if len(profiles) == 1:
-        return profiles[0]
+    # Offering a Linear profile for a ClickUp repo is not a choice, it is noise.
+    candidates = [p for p in profiles if p.provider is provider] if provider else profiles
+    if not candidates:
+        available = ", ".join(f"{p.name} ({p.provider.value})" for p in profiles)
+        raise ConfigError(
+            f"No {provider.value if provider else ''} profile in "
+            f"{path or credentials_path()}. Available: {available}.\n"
+            f"Add one with `pm creds add --name <nombre> --provider "
+            f"{provider.value if provider else '<provider>'} --token ...`."
+        )
+
+    if len(candidates) == 1:
+        return candidates[0]
 
     raise NeedsChoice(
         "Several credential profiles exist and none was named. "
         "Re-run with --profile <NAME>, or set `profile` in .pm.toml.",
-        {"action": "choose-profile", "profiles": [p.redacted() for p in profiles]},
+        {"action": "choose-profile", "profiles": [p.redacted() for p in candidates]},
     )
 
 

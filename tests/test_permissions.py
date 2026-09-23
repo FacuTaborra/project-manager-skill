@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from src.claude_pm.application.permissions import (
     REQUIRED_PERMISSIONS,
     missing_permissions,
@@ -39,14 +41,33 @@ class TestMissingPermissions:
 class TestRegister:
     def test_adds_the_missing_entries(self, tmp_path: Path) -> None:
         path = _settings(tmp_path, {})
-        assert register_permissions(path) == REQUIRED_PERMISSIONS
+        added, still_missing = register_permissions(path)
+        assert added == REQUIRED_PERMISSIONS
+        assert still_missing == []
         allow = json.loads(path.read_text(encoding="utf-8"))["permissions"]["allow"]
         assert set(REQUIRED_PERMISSIONS).issubset(allow)
 
     def test_is_idempotent(self, tmp_path: Path) -> None:
         path = _settings(tmp_path, {})
         register_permissions(path)
-        assert register_permissions(path) == []
+        assert register_permissions(path) == ([], [])
+
+    def test_a_clobbered_write_is_reported_not_claimed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Claude Code owns settings.json and rewrites it while we run."""
+        path = _settings(tmp_path, {})
+        original = Path.write_text
+
+        def clobber(self: Path, *args: object, **kwargs: object) -> int:
+            result = original(self, *args, **kwargs)
+            original(self, json.dumps({"permissions": {"allow": []}}), encoding="utf-8")
+            return result
+
+        monkeypatch.setattr(Path, "write_text", clobber)
+        added, still_missing = register_permissions(path)
+        assert added == []
+        assert still_missing == REQUIRED_PERMISSIONS
 
     def test_preserves_unrelated_settings(self, tmp_path: Path) -> None:
         path = _settings(

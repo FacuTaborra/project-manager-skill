@@ -17,6 +17,18 @@ provider = "clickup"
 token    = "pk_cccccccccccc"
 """
 
+TWO_PROVIDERS = """
+version = 1
+
+[profiles.clicky]
+provider = "clickup"
+token    = "pk_aaaaaaaaaaaa"
+
+[profiles.liny]
+provider = "linear"
+token    = "lin_api_bbbbbbbb"
+"""
+
 
 @pytest.fixture
 def stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -52,6 +64,9 @@ def stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
         def add_credentials(self) -> None:
             creds.write_text(CREDENTIALS, encoding="utf-8")
+
+        def add_two_provider_credentials(self) -> None:
+            creds.write_text(TWO_PROVIDERS, encoding="utf-8")
 
         def break_credentials(self) -> None:
             creds.write_text("this is not toml {{{", encoding="utf-8")
@@ -136,3 +151,21 @@ class TestRender:
 
     def test_no_hint_adds_no_blank_lines(self) -> None:
         assert Step(why="w", command="c").render().count("\n") == 2
+
+
+class TestProviderAmbiguity:
+    """The suggested command has to be one that actually runs."""
+
+    def test_one_provider_needs_no_flag(self, stage) -> None:
+        stage.install_skill()
+        stage.add_permissions()
+        stage.add_credentials()
+        assert next_step(stage.repo).command == "pm init"
+
+    def test_two_providers_suggest_naming_a_profile(self, stage) -> None:
+        stage.install_skill()
+        stage.add_permissions()
+        stage.add_two_provider_credentials()
+        command = next_step(stage.repo).command
+        assert command.startswith("pm init --profile")
+        assert "clicky" in command and "liny" in command

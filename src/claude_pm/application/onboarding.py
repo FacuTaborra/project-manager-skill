@@ -94,6 +94,18 @@ def _repo_step(start: Path | None) -> Step | None:
         )
     return Step(
         why=f"decirle a este repo a qué tablero escribe ({PM_FILE_NAME})",
-        command="pm init",
+        command=f"pm init{_profile_flag()}",
         hint="Te lista los tableros que ve tu token para que elijas. Commiteá el resultado.",
     )
+
+
+def _profile_flag() -> str:
+    """Name the profile only when the provider cannot be inferred from the credentials."""
+    try:
+        profiles = list_profiles()
+    except PMError:
+        return ""
+    if len({p.provider for p in profiles}) <= 1:
+        return ""
+    names = " | ".join(p.name for p in profiles)
+    return f" --profile <{names}>"

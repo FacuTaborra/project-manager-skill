@@ -131,3 +131,34 @@ class TestRedaction:
 
     def test_short_token_shows_nothing(self) -> None:
         assert Profile("p", ProviderType.LINEAR, "short").redacted()["token"] == "…"
+
+
+class TestProviderFiltering:
+    """Offering a Linear profile for a ClickUp repo is noise, not a choice."""
+
+    def test_the_only_profile_for_that_provider_is_used(self, tmp_path: Path) -> None:
+        profile = load_profile(
+            None, provider=ProviderType.LINEAR, path=_write(tmp_path, TWO_PROFILES)
+        )
+        assert profile.name == "personal-linear"
+
+    def test_without_a_provider_hint_it_still_asks(self, tmp_path: Path) -> None:
+        with pytest.raises(NeedsChoice):
+            load_profile(None, path=_write(tmp_path, TWO_PROFILES))
+
+    def test_several_profiles_for_one_provider_still_ask(self, tmp_path: Path) -> None:
+        two_clickup = TWO_PROFILES + '\n[profiles.otro]\nprovider="clickup"\ntoken="pk_d"\n'
+        with pytest.raises(NeedsChoice) as excinfo:
+            load_profile(None, provider=ProviderType.CLICKUP, path=_write(tmp_path, two_clickup))
+        assert {p["name"] for p in excinfo.value.payload["profiles"]} == {"4plus", "otro"}
+
+    def test_no_profile_for_that_provider_says_how_to_add_one(self, tmp_path: Path) -> None:
+        only_clickup = _write(tmp_path, ONE_PROFILE)
+        with pytest.raises(ConfigError, match="pm creds add"):
+            load_profile(None, provider=ProviderType.LINEAR, path=only_clickup)
+
+    def test_an_explicit_name_still_wins_over_the_filter(self, tmp_path: Path) -> None:
+        profile = load_profile(
+            "4plus", provider=ProviderType.CLICKUP, path=_write(tmp_path, TWO_PROFILES)
+        )
+        assert profile.name == "4plus"

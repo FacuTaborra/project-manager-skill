@@ -58,9 +58,24 @@ def run(args: argparse.Namespace) -> int:
 
     SKILL_DIR.mkdir(parents=True, exist_ok=True)
     SKILL_TARGET.write_text(content, encoding="utf-8")
-    added = [] if args.skip_permissions else register_permissions()
 
-    print_json({"ok": True, "installed": str(SKILL_TARGET), "permissions_added": added})
+    added: list[str] = []
+    still_missing: list[str] = []
+    if not args.skip_permissions:
+        added, still_missing = register_permissions()
+
+    payload: dict[str, object] = {
+        "ok": True,
+        "installed": str(SKILL_TARGET),
+        "permissions_added": added,
+    }
+    if still_missing:
+        payload["permissions_not_applied"] = still_missing
+        payload["why"] = (
+            f"Claude Code rewrote {settings_path()} while this ran and dropped them. "
+            f"Re-run this command, or add them from Claude Code with /permissions."
+        )
+    print_json(payload)
     print(next_step().render())
     return EXIT_OK
 

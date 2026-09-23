@@ -30,12 +30,18 @@ def missing_permissions(path: Path | None = None) -> list[str]:
     return [entry for entry in REQUIRED_PERMISSIONS if entry not in allow_set]
 
 
-def register_permissions(path: Path | None = None) -> list[str]:
-    """Add the missing entries. Returns what was added (empty if nothing was)."""
+def register_permissions(path: Path | None = None) -> tuple[list[str], list[str]]:
+    """Add the missing entries. Returns (added, still_missing).
+
+    The file is read back afterwards because Claude Code owns it and rewrites it
+    while running: a concurrent save can drop what we just appended. Reporting
+    `added` without checking would tell the user the permission is in place when
+    it silently is not.
+    """
     target = path or settings_path()
     missing = missing_permissions(target)
     if not missing:
-        return []
+        return [], []
 
     settings = _read(target)
     perms = settings.setdefault("permissions", {})
@@ -49,7 +55,9 @@ def register_permissions(path: Path | None = None) -> list[str]:
         json.dumps(settings, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    return missing
+
+    still_missing = missing_permissions(target)
+    return [entry for entry in missing if entry not in still_missing], still_missing
 
 
 def _read(path: Path) -> dict[str, Any]:
