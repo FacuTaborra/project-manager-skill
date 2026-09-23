@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from src.claude_pm._toml_schema import toml_string
 from src.claude_pm.application import profiles
 from src.claude_pm.commands import creds
 from src.claude_pm.credentials import list_profiles
@@ -198,3 +199,9 @@ class TestTomlEscaping:
         with pytest.raises(PMError, match="letters, digits"):
             creds.run_add(_args(name='evil"] \n[profiles.other'))
         assert not creds_file.exists()
+
+
+def test_control_characters_in_a_token_still_round_trip() -> None:
+    """A token pasted with a stray newline or tab must not corrupt the file."""
+    raw = 'pk_\n\t\x01"\\end\x7f'
+    assert tomllib.loads(f"token = {toml_string(raw)}")["token"] == raw

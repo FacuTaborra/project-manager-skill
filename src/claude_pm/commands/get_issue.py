@@ -9,6 +9,9 @@ from ._helpers import issue_to_dict, prepare_read, print_json
 
 
 def run(args: argparse.Namespace) -> int:
+    """`id` repeats `identifier` on purpose: it was this command's key before the
+    serializers were shared, and existing callers may still read it.
+    """
     _, provider = prepare_read(args)
 
     issue = provider.get_issue(args.id)

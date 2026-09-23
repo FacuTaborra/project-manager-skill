@@ -9,6 +9,7 @@ Lives next to `pmfile.py`, which parses what this renders.
 
 from __future__ import annotations
 
+from ._toml_schema import toml_string
 from .pmfile import PM_FILE_VERSION, Defaults, ScopeSpec
 
 
@@ -53,14 +54,3 @@ def render_pm_toml(
             lines.append(f"priority = {defaults.priority}")
 
     return "\n".join(lines) + "\n"
-
-
-def toml_string(value: str) -> str:
-    """Render `value` as a quoted TOML basic string, escaping `\\` and `"`.
-
-    Shared with `credentials.py`, which writes profile fields (token, provider,
-    workspace_id) into the same file format and must not let an unescaped quote
-    or backslash in a token break the TOML it writes.
-    """
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'

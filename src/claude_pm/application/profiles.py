@@ -67,7 +67,7 @@ def infer_provider(
     if not providers:
         raise PMError(
             "No credential profiles yet, so there is no provider to infer.\n"
-            "Run `pm creds add --name <nombre> --provider clickup --token pk_xxx` first."
+            "Run `pm creds add --name <name> --provider clickup --token pk_xxx` first."
         )
 
     raise NeedsChoice(

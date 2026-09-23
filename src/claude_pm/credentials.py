@@ -21,10 +21,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ._toml_schema import reject_unknown
+from ._toml_schema import reject_unknown, toml_string
 from .enums import ProviderType
 from .exceptions import ConfigError, NeedsChoice, PMError
-from .pmfile_render import toml_string
 
 CREDENTIALS_VERSION = 1
 
@@ -118,7 +117,7 @@ def load_profile(
         raise ConfigError(
             f"No {provider.value if provider else ''} profile in "
             f"{path or credentials_path()}. Available: {available}.\n"
-            f"Add one with `pm creds add --name <nombre> --provider "
+            f"Add one with `pm creds add --name <name> --provider "
             f"{provider.value if provider else '<provider>'} --token ...`."
         )
 
@@ -217,7 +216,11 @@ def write_profiles(
         names = {name for name, *_ in entries}
         path.write_text(_without(path.read_text(encoding="utf-8"), names), encoding="utf-8")
 
-    header = "" if path.is_file() and path.read_text(encoding="utf-8").strip() else "version = 1\n"
+    header = (
+        ""
+        if path.is_file() and path.read_text(encoding="utf-8").strip()
+        else f"version = {CREDENTIALS_VERSION}\n"
+    )
     blocks = []
     for name, provider, token, workspace_id in entries:
         block = (

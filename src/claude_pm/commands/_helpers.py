@@ -48,12 +48,12 @@ def interactive(args: Any) -> bool:
 
 
 def read_text_arg(path: str | None, what: str) -> str | None:
-    """Read a UTF-8 file passed as a `--*-file` flag, or pass `None` through.
+    """Read a UTF-8 file passed as a `--*-file` flag, or pass an absent flag through as `None`.
 
     `what` names the flag in the error, so "Content file not found: x" points
     back at whichever file argument the caller is reading.
     """
-    if path is None:
+    if not path:
         return None
     target = Path(path).expanduser()
     if not target.is_file():

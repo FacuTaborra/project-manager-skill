@@ -44,4 +44,4 @@ def run_update_doc(args: argparse.Namespace) -> int:
 
 
 def _content(args: argparse.Namespace) -> str | None:
-    return read_text_arg(args.content_file or None, "Content")
+    return read_text_arg(args.content_file, "Content")

@@ -34,7 +34,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def _description(args: argparse.Namespace) -> str:
-    from_file = read_text_arg(args.description_file or None, "Description")
+    from_file = read_text_arg(args.description_file, "Description")
     if from_file is not None:
         return from_file
     if args.description:

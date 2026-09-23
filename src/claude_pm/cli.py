@@ -55,6 +55,7 @@ def _dry_run_parser(help_text: str | None = None) -> argparse.ArgumentParser:
 
 
 def _no_input_parser(help_text: str | None = None) -> argparse.ArgumentParser:
+    """`--no-input` for commands that can prompt: Claude runs them without a TTY."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--no-input", action="store_true", help=help_text)
     return parser
@@ -320,7 +321,12 @@ def main(argv: list[str] | None = None) -> int:
         print(str(e), file=sys.stderr)
         return e.exit_code
     except OSError as e:
-        print(f"{e.strerror or e}: {e.filename}", file=sys.stderr)
+        where = f" {e.filename}" if e.filename else ""
+        print(
+            f"Could not access{where}: {e.strerror or e}. "
+            "Check that the path exists and is writable, then re-run.",
+            file=sys.stderr,
+        )
         return EXIT_ERROR
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)

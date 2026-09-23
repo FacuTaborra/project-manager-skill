@@ -11,11 +11,9 @@ from ._helpers import prepare_write, print_result, read_text_arg
 def run(args: argparse.Namespace) -> int:
     _, _, guard = prepare_write(args)
 
-    description = (
-        read_text_arg(args.description_file, "Description")
-        if args.description_file
-        else args.description
-    )
+    description = read_text_arg(args.description_file, "Description")
+    if description is None:
+        description = args.description
     outcome = guard.update_issue(
         issue_id=args.id,
         title=args.title,
