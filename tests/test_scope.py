@@ -15,7 +15,7 @@ from src.claude_pm.application.scope import (
 )
 from src.claude_pm.config import Config
 from src.claude_pm.credentials import Profile
-from src.claude_pm.domain.models import Issue, IssueUpdate, Label, Project, State, Team, User
+from src.claude_pm.domain.models import Doc, Issue, IssueUpdate, Label, Project, State, Team, User
 from src.claude_pm.enums import ProviderType
 from src.claude_pm.exceptions import NeedsChoice, PMError, ScopeViolation
 from src.claude_pm.infrastructure.cache import Cache
@@ -144,28 +144,89 @@ class TestCreateIssue:
 class TestUpdateIssue:
     def test_an_issue_in_scope_can_be_updated(self) -> None:
         provider = FakeProvider(owners={"ABC-1": IN_SCOPE})
-        _guard(provider).update_issue(IssueUpdate(issue_id="ABC-1", title="new"))
+        _guard(provider).update_issue(issue_id="ABC-1", title="new")
         assert "update_issue" in provider.names()
 
     def test_an_issue_on_another_board_is_refused(self) -> None:
         """update-issue used to mutate any task id in the workspace."""
         provider = FakeProvider(owners={"XYZ-9": OTHER})
         with pytest.raises(ScopeViolation, match="outside this repo's scope"):
-            _guard(provider).update_issue(IssueUpdate(issue_id="XYZ-9", title="new"))
+            _guard(provider).update_issue(issue_id="XYZ-9", title="new")
         assert "update_issue" not in provider.names()
 
     def test_ownership_costs_exactly_one_get(self) -> None:
         provider = FakeProvider(owners={"ABC-1": IN_SCOPE})
         guard = _guard(provider)
-        guard.update_issue(IssueUpdate(issue_id="ABC-1", title="a"))
-        guard.update_issue(IssueUpdate(issue_id="ABC-1", title="b"))
+        guard.update_issue(issue_id="ABC-1", title="a")
+        guard.update_issue(issue_id="ABC-1", title="b")
         assert provider.names().count("get_issue") == 1
 
     def test_an_issue_with_no_project_is_refused(self) -> None:
         """Possible in Linear; no project means no scope can cover it."""
         provider = FakeProvider(owners={"ORPHAN-1": None})
         with pytest.raises(ScopeViolation, match="belongs to no project"):
-            _guard(provider).update_issue(IssueUpdate(issue_id="ORPHAN-1", title="x"))
+            _guard(provider).update_issue(issue_id="ORPHAN-1", title="x")
+
+    def test_nothing_to_change_is_refused_before_any_api_call(self) -> None:
+        provider = FakeProvider(owners={"ABC-1": IN_SCOPE})
+        with pytest.raises(PMError, match="Nothing to update"):
+            _guard(provider).update_issue(issue_id="ABC-1")
+        assert provider.calls == []
+
+    def test_state_and_assignee_are_resolved_from_names(self) -> None:
+        provider = FakeProvider(owners={"ABC-1": IN_SCOPE})
+        _guard(provider).update_issue(
+            issue_id="ABC-1", state="in progress", assignee_email="dev@x.io"
+        )
+        update = dict(provider.calls)["update_issue"]
+        assert (update.state_id, update.assignee_id) == ("in progress", "42")
+
+    def test_scope_is_checked_before_names_are_resolved(self) -> None:
+        provider = FakeProvider(owners={"XYZ-9": OTHER})
+        with pytest.raises(ScopeViolation):
+            _guard(provider).update_issue(issue_id="XYZ-9", assignee_email="dev@x.io")
+        assert "resolve_user_by_email" not in provider.names()
+
+
+class FakeDocsProvider(FakeProvider):
+    def create_doc(self, title: str, content: str | None) -> Doc:
+        self.calls.append(("create_doc", (title, content)))
+        return Doc(id="doc-1", title=title)
+
+    def update_doc(
+        self,
+        doc_id: str,
+        title: str | None = None,
+        content: str | None = None,
+        page_id: str | None = None,
+    ) -> Doc:
+        self.calls.append(("update_doc", doc_id))
+        return Doc(id=doc_id, title=title or "")
+
+
+class TestDocs:
+    def test_a_provider_without_docs_is_refused(self) -> None:
+        provider = FakeProvider()
+        with pytest.raises(PMError, match="ClickUp only"):
+            _guard(provider).create_doc(title="T", content=None)
+        assert provider.calls == []
+
+    def test_the_refusal_holds_in_dry_run_too(self) -> None:
+        with pytest.raises(PMError, match="ClickUp only"):
+            _guard(FakeProvider(), dry_run=True).update_doc(doc_id="d")
+
+    def test_a_docs_provider_gets_the_call(self) -> None:
+        provider = FakeDocsProvider()
+        doc = _guard(provider).create_doc(title="T", content="body")
+        assert isinstance(doc, Doc)
+        assert dict(provider.calls)["create_doc"] == ("T", "body")
+
+    def test_dry_run_does_not_reach_the_docs_api(self) -> None:
+        provider = FakeDocsProvider()
+        outcome = _guard(provider, dry_run=True).update_doc(doc_id="d", content="x")
+        assert isinstance(outcome, DryRun)
+        assert outcome.payload["has_content"] is True
+        assert provider.calls == []
 
 
 class TestDryRun:
@@ -188,12 +249,21 @@ class TestDryRun:
 
     def test_update_preview_carries_the_id(self) -> None:
         provider = FakeProvider(owners={"ABC-1": IN_SCOPE})
-        outcome = _guard(provider, dry_run=True).update_issue(
-            IssueUpdate(issue_id="ABC-1", title="new")
-        )
+        outcome = _guard(provider, dry_run=True).update_issue(issue_id="ABC-1", title="new")
         assert isinstance(outcome, DryRun)
         assert outcome.payload["id"] == "ABC-1"
         assert "update_issue" not in provider.names()
+
+    def test_update_preview_shows_names_not_ids(self) -> None:
+        provider = FakeProvider(owners={"ABC-1": IN_SCOPE})
+        outcome = _guard(provider, dry_run=True).update_issue(
+            issue_id="ABC-1", state="In Progress", assignee_email="dev@x.io"
+        )
+        assert isinstance(outcome, DryRun)
+        assert (outcome.payload["state"], outcome.payload["assignee"]) == (
+            "In Progress",
+            "dev@x.io",
+        )
 
 
 class TestStructuralChanges:

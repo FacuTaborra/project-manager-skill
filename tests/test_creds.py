@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from src.claude_pm._toml_schema import toml_string
+from src.claude_pm.application import profiles
 from src.claude_pm.commands import creds
 from src.claude_pm.credentials import list_profiles
 from src.claude_pm.domain.models import Team
@@ -50,7 +52,7 @@ def _args(**overrides: object) -> argparse.Namespace:
 
 
 def _use(monkeypatch: pytest.MonkeyPatch, provider: FakeProvider) -> None:
-    monkeypatch.setattr(creds, "get_provider", lambda *a, **k: provider)
+    monkeypatch.setattr(profiles, "get_provider", lambda *a, **k: provider)
 
 
 class TestVerification:
@@ -177,3 +179,29 @@ class TestTokenInput:
     ) -> None:
         with pytest.raises(PMError, match="Unknown provider"):
             creds.run_add(_args(provider="jira"))
+
+
+class TestTomlEscaping:
+    def test_a_token_with_quotes_and_backslashes_round_trips(
+        self, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unescaped `"` or `\\` in the token used to corrupt the TOML it was written into."""
+        tricky_token = 'pk_"weird"\\token'
+        _use(monkeypatch, FakeProvider())
+        creds.run_add(_args(token=tricky_token))
+        profiles = list_profiles(creds_file)
+        assert profiles[0].token == tricky_token
+
+    def test_an_invalid_profile_name_is_rejected_before_anything_is_written(
+        self, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _use(monkeypatch, FakeProvider())
+        with pytest.raises(PMError, match="letters, digits"):
+            creds.run_add(_args(name='evil"] \n[profiles.other'))
+        assert not creds_file.exists()
+
+
+def test_control_characters_in_a_token_still_round_trip() -> None:
+    """A token pasted with a stray newline or tab must not corrupt the file."""
+    raw = 'pk_\n\t\x01"\\end\x7f'
+    assert tomllib.loads(f"token = {toml_string(raw)}")["token"] == raw

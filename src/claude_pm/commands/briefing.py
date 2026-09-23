@@ -5,13 +5,12 @@ from __future__ import annotations
 import argparse
 
 from ..application.briefing import BriefingService
-from ..application.setup_flow import SetupService
-from ..exceptions import EXIT_OK, PMError
+from ..exceptions import EXIT_OK, CacheInvalid
 from ._helpers import (
     briefing_to_dict,
     build_context,
-    get_cache_repo,
-    issue_to_dict,
+    build_setup,
+    issues_by_state_to_dict,
     prepare_read,
     print_json,
 )
@@ -19,11 +18,11 @@ from ._helpers import (
 
 def run(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    cache = SetupService(provider, get_cache_repo(config), config).ensure()
+    cache = build_setup(config, provider).verify().cache
 
     projects = cache.lists
     if not projects:
-        raise PMError("Cache is missing list info. Run `pm setup --force`.")
+        raise CacheInvalid("Cache is missing list info. Run `pm setup --force`.")
 
     context = build_context(config)
     service = BriefingService(provider, context)
@@ -31,10 +30,7 @@ def run(args: argparse.Namespace) -> int:
     if len(projects) > 1:
         result = service.generate_multi(projects=list(projects), repo_name=config.repo_name)
         for section in result["projects"]:
-            section["issues_by_state"] = {
-                state: [issue_to_dict(i) for i in issues]
-                for state, issues in section["issues_by_state"].items()
-            }
+            section["issues_by_state"] = issues_by_state_to_dict(section["issues_by_state"])
         print_json(result)
     else:
         briefing = service.generate(

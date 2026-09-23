@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.commands import init
+from src.claude_pm.commands import _helpers, init
 from src.claude_pm.exceptions import NeedsChoice, PMError
 
 
@@ -35,7 +35,7 @@ def _args(**overrides: object) -> argparse.Namespace:
 
 class TestMachineProtocolUnchanged:
     def test_no_input_never_prompts_even_on_a_tty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(init, "is_interactive", lambda: True)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
         monkeypatch.setattr(
             init,
             "_run_once",
@@ -49,7 +49,7 @@ class TestMachineProtocolUnchanged:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         payload = {"action": "choose-workspace", "workspaces": [{"id": "w1", "name": "One"}]}
-        monkeypatch.setattr(init, "is_interactive", lambda: False)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: False)
         monkeypatch.setattr(
             init, "_run_once", lambda _a: (_ for _ in ()).throw(NeedsChoice("pick", payload))
         )
@@ -83,7 +83,7 @@ class TestWizardLoop:
                 raise NeedsChoice("pick", payloads.pop(0))
             return 0
 
-        monkeypatch.setattr(init, "is_interactive", lambda: True)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
         monkeypatch.setattr(init, "list_profiles", lambda: [object()])
         monkeypatch.setattr(init, "_run_once", fake_run_once)
         self._answers(monkeypatch, ["2", "1,2"])
@@ -95,7 +95,7 @@ class TestWizardLoop:
         assert len(seen) == 3
 
     def test_an_unknown_action_is_reported_not_ignored(self) -> None:
-        with pytest.raises(PMError, match="de forma interactiva"):
+        with pytest.raises(PMError, match="interactively"):
             init._answer(_args(), {"action": "choose-something-new"})
 
 
@@ -130,18 +130,18 @@ class TestFirstCredential:
         """Sending someone to another command mid-flow is the friction we removed."""
         called: dict[str, object] = {}
 
-        monkeypatch.setattr(init, "is_interactive", lambda: True)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
         monkeypatch.setattr(init, "list_profiles", lambda: [])
         monkeypatch.setattr(init, "_run_once", lambda _a: 0)
         monkeypatch.setattr(init, "ask_secret", lambda _q: "pk_typed_by_hand")
         monkeypatch.setattr(init, "ask", lambda _q, default=None: "urbs")
-        monkeypatch.setattr(init.creds, "ask_provider", lambda: init.ProviderType.CLICKUP)
+        monkeypatch.setattr(init, "ask_provider", lambda: init.ProviderType.CLICKUP)
         monkeypatch.setattr(
-            init.creds, "verify_token", lambda p, t: ("dev@example.com", [_team("w1", "One")])
+            init, "verify_token", lambda p, t: ("dev@example.com", [_team("w1", "One")])
         )
-        monkeypatch.setattr(init.creds, "report", lambda *a: None)
+        monkeypatch.setattr(init, "report", lambda *a: None)
         monkeypatch.setattr(
-            init.creds,
+            init,
             "save_profile",
             lambda name, provider, token, ws, **kw: called.update(
                 name=name, provider=provider, token=token, ws=ws

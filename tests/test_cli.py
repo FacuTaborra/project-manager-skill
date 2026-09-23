@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
+
 import pytest
 
+from src.claude_pm import cli
 from src.claude_pm.cli import build_parser
+from src.claude_pm.exceptions import EXIT_ERROR
 
 WRITE_COMMANDS = [
     ["create-issue", "--title", "T", "--description", "D"],
@@ -165,6 +169,29 @@ class TestCreds:
         )
         assert args.workspace_id == "w"
         assert args.force is True
+
+
+class TestOSErrorHandling:
+    """An unhandled OSError (e.g. a permissions or disk problem) must not print a traceback."""
+
+    def test_it_prints_a_one_line_message_and_returns_exit_error(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def boom(args: object) -> int:
+            raise OSError(13, "Permission denied", "/no/such/path")
+
+        class FakeParser:
+            def parse_args(self, argv: list[str] | None = None) -> object:
+                return argparse.Namespace(func=boom)
+
+        monkeypatch.setattr(cli, "build_parser", lambda: FakeParser())
+
+        exit_code = cli.main([])
+
+        captured = capsys.readouterr()
+        assert exit_code == EXIT_ERROR
+        assert "Permission denied" in captured.err
+        assert "/no/such/path" in captured.err
 
 
 class TestRemovedSurface:

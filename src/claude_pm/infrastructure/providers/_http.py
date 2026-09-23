@@ -46,23 +46,10 @@ class HttpClient:
             raise ProviderError(f"Unexpected response shape: {type(result).__name__}")
         return result
 
-    def patch_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def post_json(self, payload: dict[str, Any], url: str | None = None) -> dict[str, Any]:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            url,
-            data=body,
-            headers={**self.headers, "Content-Type": "application/json; charset=utf-8"},
-            method="PATCH",
-        )
-        result = self._execute(req)
-        if not isinstance(result, dict):
-            raise ProviderError(f"Unexpected response shape: {type(result).__name__}")
-        return result
-
-    def post_json(self, payload: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            self.url,
+            url or self.url,
             data=body,
             headers={**self.headers, "Content-Type": "application/json; charset=utf-8"},
             method="POST",

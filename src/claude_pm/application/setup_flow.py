@@ -30,9 +30,6 @@ class SetupService:
         self.cache_repo = cache_repo
         self.config = config
 
-    def ensure(self, *, force: bool = False) -> Cache:
-        return self.verify(force=force).cache
-
     def verify(self, *, force: bool = False) -> SetupResult:
         cache = self.cache_repo.load()
         if not force and cache.is_valid_for(self.config.fingerprint):

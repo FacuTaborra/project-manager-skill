@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
-from .models import Issue, IssueDraft, IssueUpdate, Label, Project, State, Team, User
+from .models import Doc, Issue, IssueDraft, IssueUpdate, Label, Project, State, Team, User
 
 
 class IssueProvider(Protocol):
@@ -44,10 +44,6 @@ class IssueProvider(Protocol):
         """List projects, optionally filtered by team."""
         ...
 
-    def find_projects(self, name_query: str) -> list[Project]:
-        """Find projects whose name matches the query (case-insensitive substring)."""
-        ...
-
     def create_project(self, name: str, team_id: str) -> Project:
         """Create a new project in the given team."""
         ...
@@ -82,6 +78,30 @@ class IssueProvider(Protocol):
 
     def update_issue(self, update: IssueUpdate) -> Issue:
         """Update an existing issue. Only fields set (not None) are changed."""
+        ...
+
+
+@runtime_checkable
+class DocProvider(Protocol):
+    """Optional capability: trackers with workspace-level documents (ClickUp).
+
+    Kept out of `IssueProvider` so an adapter without docs is still a complete
+    provider. The scope guard checks for it at runtime and refuses with a
+    readable message instead of an `AttributeError`.
+    """
+
+    def create_doc(self, title: str, content: str | None) -> Doc:
+        """Create a doc, with a first page when `content` is given."""
+        ...
+
+    def update_doc(
+        self,
+        doc_id: str,
+        title: str | None = None,
+        content: str | None = None,
+        page_id: str | None = None,
+    ) -> Doc:
+        """Rename a doc, and/or replace a page (or append one when `page_id` is None)."""
         ...
 
 

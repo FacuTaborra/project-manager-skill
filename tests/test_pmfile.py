@@ -95,7 +95,7 @@ class TestRejections:
             _parse(MINIMAL.replace('profile  = "personal"', ""), tmp_path)
 
     def test_unknown_provider(self, tmp_path: Path) -> None:
-        with pytest.raises(ConfigError, match="unknown provider"):
+        with pytest.raises(ConfigError, match="Unknown provider"):
             _parse(MINIMAL.replace("linear", "jira"), tmp_path)
 
     def test_empty_lists_is_refused(self, tmp_path: Path) -> None:

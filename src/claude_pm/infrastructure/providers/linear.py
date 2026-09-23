@@ -97,15 +97,6 @@ class LinearProvider:
             )
         return result
 
-    def find_projects(self, name_query: str) -> list[Project]:
-        data = self._query(
-            "query($q: String!) { projects(filter: {name: {containsIgnoreCase: $q}}) "
-            "{ nodes { id name } } }",
-            {"q": name_query},
-        )
-        nodes = (data.get("projects") or {}).get("nodes") or []
-        return [Project(id=n["id"], name=n["name"]) for n in nodes]
-
     def create_project(self, name: str, team_id: str) -> Project:
         data = self._query(
             "mutation($input: ProjectCreateInput!) { projectCreate(input: $input) "

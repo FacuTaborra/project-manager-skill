@@ -28,13 +28,13 @@ class Step:
     hint: str = ""
 
     def render(self) -> str:
-        lines = ["", f"  ▸ Próximo paso: {self.why}", f"      {self.command}"]
+        lines = ["", f"  ▸ Next step: {self.why}", f"      {self.command}"]
         lines.extend(f"    {line}" for line in self.hint.splitlines() if line)
         return "\n".join(lines)
 
 
 READY = Step(
-    why="ya está todo listo — abrí Claude Code en este repo y usá /pm",
+    why="everything is set — open Claude Code in this repo and use /pm",
     command="/pm",
 )
 
@@ -48,16 +48,16 @@ def next_step(start: Path | None = None) -> Step:
 
 
 def _skill_step() -> Step | None:
-    from .permissions import missing_permissions
+    from ..infrastructure.permissions import missing_permissions
 
     if not SKILL_FILE.is_file():
         return Step(
-            why="instalar la skill para que Claude Code la vea",
+            why="install the skill so Claude Code can see it",
             command="pm install-skill --yes",
         )
     if missing_permissions():
         return Step(
-            why="registrar los permisos para que Claude no pregunte en cada llamada",
+            why="register the permissions so Claude doesn't ask on every call",
             command="pm install-skill --yes",
         )
     return None
@@ -68,17 +68,17 @@ def _credentials_step() -> Step | None:
         profiles = list_profiles()
     except PMError:
         return Step(
-            why=f"arreglar {credentials_path()}, que no se puede leer",
+            why=f"fix {credentials_path()}, which cannot be read",
             command="pm creds list",
         )
     if not profiles:
         return Step(
-            why="guardar tu token",
-            command="pm creds add --name <nombre> --provider clickup --token pk_xxx",
+            why="save your token",
+            command="pm creds add --name <name> --provider clickup --token pk_xxx",
             hint=(
                 "ClickUp → Settings → Apps → API Token.\n"
-                "Para Linear: https://linear.app/settings/api (Read + Write).\n"
-                "Si venías de la versión anterior: pm creds import"
+                "For Linear: https://linear.app/settings/api (Read + Write).\n"
+                "Coming from the previous version: pm creds import"
             ),
         )
     return None
@@ -89,13 +89,13 @@ def _repo_step(start: Path | None) -> Step | None:
         return None
     if find_repo_root(start) is None:
         return Step(
-            why="entrar a un repo git — el binding al tablero vive en su raíz",
-            command="cd <tu-repo> && pm init",
+            why="enter a git repo — the board binding lives at its root",
+            command="cd <your-repo> && pm init",
         )
     return Step(
-        why=f"decirle a este repo a qué tablero escribe ({PM_FILE_NAME})",
+        why=f"tell this repo which board it writes to ({PM_FILE_NAME})",
         command=f"pm init{_profile_flag()}",
-        hint="Te lista los tableros que ve tu token para que elijas. Commiteá el resultado.",
+        hint="Lists the boards your token can see so you can pick. Commit the result.",
     )
 
 

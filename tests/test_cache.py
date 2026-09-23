@@ -10,10 +10,10 @@ from src.claude_pm.infrastructure.cache import (
     CACHE_TTL_DAYS,
     CACHE_VERSION,
     Cache,
-    InMemoryCacheRepository,
     JsonFileCacheRepository,
     find_legacy_caches,
 )
+from tests.fakes import InMemoryCacheRepository
 
 FINGERPRINT = "a1b2c3d4"
 LISTS = [{"id": "901305678901", "name": "modulo-energia"}]

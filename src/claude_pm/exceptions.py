@@ -28,11 +28,11 @@ class PMError(Exception):
 
 
 class ConfigError(PMError):
-    """Configuration is missing or malformed (PAK file, env vars, paths)."""
+    """Configuration is missing or malformed (.pm.toml, credentials.toml, paths)."""
 
 
 class ProviderError(PMError):
-    """An issue-tracker adapter (Linear, GitHub, ...) failed."""
+    """An issue-tracker adapter (Linear, ClickUp) failed."""
 
 
 class ScopeViolation(PMError):
@@ -44,6 +44,17 @@ class ScopeViolation(PMError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message, exit_code=EXIT_SCOPE)
+
+
+class CacheInvalid(PMError):
+    """The local cache does not hold what a read needs, and `pm setup --force` fixes it.
+
+    Distinct from a bare `PMError` so a caller can tell "the cache needs a
+    refresh" apart from every other fatal error by exit code alone.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, exit_code=EXIT_CACHE_INVALID)
 
 
 class NeedsChoice(PMError):

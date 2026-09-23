@@ -5,24 +5,17 @@ from __future__ import annotations
 import argparse
 
 from ..exceptions import EXIT_OK
-from ._helpers import prepare_read, print_json
+from ._helpers import issue_to_dict, prepare_read, print_json
 
 
 def run(args: argparse.Namespace) -> int:
+    """`id` repeats `identifier` on purpose: it was this command's key before the
+    serializers were shared, and existing callers may still read it.
+    """
     _, provider = prepare_read(args)
 
     issue = provider.get_issue(args.id)
-    print_json(
-        {
-            "id": issue.identifier,
-            "title": issue.title,
-            "description": issue.description,
-            "state": {"id": issue.state.id, "name": issue.state.name},
-            "priority": issue.priority,
-            "url": issue.url,
-            "project": (
-                {"id": issue.project.id, "name": issue.project.name} if issue.project else None
-            ),
-        }
-    )
+    payload = issue_to_dict(issue, with_description=True)
+    payload["id"] = issue.identifier
+    print_json(payload)
     return EXIT_OK

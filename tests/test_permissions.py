@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.application.permissions import (
+from src.claude_pm.infrastructure.permissions import (
     REQUIRED_PERMISSIONS,
     missing_permissions,
     register_permissions,

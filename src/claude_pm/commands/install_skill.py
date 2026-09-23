@@ -8,12 +8,13 @@ a path next to the source.
 from __future__ import annotations
 
 import argparse
+import sys
 from importlib import resources
 from pathlib import Path
 
 from ..application.onboarding import SKILL_DIR, next_step
-from ..application.permissions import missing_permissions, register_permissions, settings_path
 from ..exceptions import EXIT_OK, PMError
+from ..infrastructure.permissions import missing_permissions, register_permissions, settings_path
 from ._helpers import print_json
 
 SKILL_TARGET = SKILL_DIR / "SKILL.md"
@@ -76,7 +77,7 @@ def run(args: argparse.Namespace) -> int:
             f"Re-run this command, or add them from Claude Code with /permissions."
         )
     print_json(payload)
-    print(next_step().render())
+    print(next_step().render(), file=sys.stderr)
     return EXIT_OK
 
 

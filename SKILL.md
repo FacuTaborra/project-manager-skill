@@ -33,7 +33,7 @@ If the repo has no `.pm.toml`, every command fails. Tell the user to run `pm ini
 
 ## HARD RULE — setup problems
 
-**When any command fails because something is not configured, run `pm doctor` and surface the `▸ Próximo paso` block it prints, verbatim.** Never improvise setup commands or guess at an order.
+**When any command fails because something is not configured, run `pm doctor` and surface the `▸ Next step` block it prints, verbatim.** Never improvise setup commands or guess at an order.
 
 `doctor` works at every stage, including a machine with nothing configured, and always ends with the single next command. That is the only source of setup instructions you should use — not this file, not the README.
 
@@ -192,7 +192,7 @@ Note: the repo may define default labels in `.pm.toml`; they are applied automat
 
 ## Error handling
 
-- **Anything about configuration** (exit 1): run `pm doctor`, surface its `▸ Próximo paso` verbatim. Don't improvise.
+- **Anything about configuration** (exit 1): run `pm doctor`, surface its `▸ Next step` verbatim. Don't improvise.
 - **Scope refusal** (exit 4): surface it verbatim and stop. This is a safety boundary, not an obstacle.
 - **Vault not found** (`vault_available: false`): skip the vault section silently.
 - **Needs a choice** (exit 2): show options, wait, re-run with the flag.
