@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.claude_pm.application.prompt import Choice, choose, is_interactive
-from src.claude_pm.application.prompt import _parse_selection as parse
+from src.claude_pm.commands._prompt import Choice, choose, is_interactive
+from src.claude_pm.commands._prompt import _parse_selection as parse
 from src.claude_pm.exceptions import PMError
 
 OPTIONS = [Choice(id="a", label="A"), Choice(id="b", label="B"), Choice(id="c", label="C")]

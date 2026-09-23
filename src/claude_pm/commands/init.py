@@ -16,18 +16,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ..application.init_flow import build_scope, defaults_from_legacy, read_legacy_section
+from ..application.init_flow import (
+    LegacySection,
+    build_scope,
+    defaults_from_legacy,
+    read_legacy_section,
+)
 from ..application.onboarding import next_step
-from ..application.prompt import Choice, ask, ask_secret, choose
-from ..application.toml_render import render_pm_toml
-from ..credentials import list_profiles, load_profile
+from ..application.profiles import infer_provider, pick_workspace, verify_token
+from ..credentials import list_profiles, load_profile, save_profile
 from ..domain.ports import IssueProvider
 from ..enums import ProviderType
 from ..exceptions import EXIT_OK, NeedsChoice, PMError
 from ..infrastructure.providers._registry import get_provider
 from ..infrastructure.repo_detect import PM_FILE_NAME, detect_repo_name, find_repo_root
-from . import creds
+from ..pmfile_render import render_pm_toml
 from ._helpers import interactive, print_json
+from ._profile_io import WHERE_TO_GET_ONE, ask_provider, report
+from ._prompt import Choice, ask, ask_secret, choose
 
 DEFAULT_LEGACY_PATH = Path.home() / ".claude" / "skills" / "pm" / "projects.pm"
 
@@ -58,15 +64,15 @@ def run(args: argparse.Namespace) -> int:
 def _add_first_credential(args: argparse.Namespace) -> None:
     """Ask for a token here rather than sending the user off to another command."""
     print("Todavía no hay credenciales guardadas.")
-    provider = creds._provider(args.provider) if args.provider else creds.ask_provider()
-    token = ask_secret(f"Token de {provider.value} ({creds.WHERE_TO_GET_ONE[provider]})").strip()
+    provider = ProviderType.parse(args.provider) if args.provider else ask_provider()
+    token = ask_secret(f"Token de {provider.value} ({WHERE_TO_GET_ONE[provider]})").strip()
 
-    email, reachable = creds.verify_token(provider, token)
+    email, reachable = verify_token(provider, token)
     name = ask("Nombre para este perfil", default=provider.value)
-    workspace_id = creds.pick_workspace(None, reachable)
+    workspace_id = pick_workspace(None, reachable)
 
-    creds.save_profile(name, provider, token, workspace_id)
-    creds.report(name, email, reachable, workspace_id)
+    save_profile(name, provider, token, workspace_id)
+    report(name, email, reachable, workspace_id)
 
     args.profile = name
     args.provider = provider.value
@@ -112,7 +118,7 @@ def _run_once(args: argparse.Namespace) -> int:
     repo_name = args.repo_name or detect_repo_name(repo_root)
     legacy = _legacy(args, repo_name)
 
-    provider_name = _provider_name(args, legacy)
+    provider_name = infer_provider(args.provider, args.profile, legacy.provider if legacy else None)
     profile = load_profile(args.profile, provider=provider_name)
     if profile.provider is not provider_name:
         raise PMError(
@@ -159,7 +165,7 @@ def _run_once(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _legacy(args: argparse.Namespace, repo_name: str):  # type: ignore[no-untyped-def]
+def _legacy(args: argparse.Namespace, repo_name: str) -> LegacySection | None:
     if not args.from_legacy:
         return None
     path = (
@@ -169,42 +175,3 @@ def _legacy(args: argparse.Namespace, repo_name: str):  # type: ignore[no-untype
     if section is None:
         raise PMError(f"No [{repo_name}] section in {path}.")
     return section
-
-
-def _provider_name(args: argparse.Namespace, legacy) -> ProviderType:  # type: ignore[no-untyped-def]
-    """Work out the provider without making the user state the obvious.
-
-    A credential profile already carries one, so naming a profile — or having
-    only profiles of one kind — settles it. Only a genuine ambiguity is worth
-    asking about, and then it is exit 2 like every other choice, not a dead end.
-    """
-    raw = args.provider or (legacy.provider if legacy else None)
-    if raw is not None:
-        return ProviderType.parse(raw)
-
-    profiles = list_profiles()
-    if args.profile:
-        named = next((p for p in profiles if p.name == args.profile), None)
-        if named is None:
-            available = ", ".join(p.name for p in profiles) or "(none)"
-            raise PMError(f"Profile {args.profile!r} not found. Available: {available}.")
-        return named.provider
-
-    providers = {p.provider for p in profiles}
-    if len(providers) == 1:
-        return providers.pop()
-    if not providers:
-        raise PMError(
-            "No credential profiles yet, so there is no provider to infer.\n"
-            "Run `pm creds add --name <nombre> --provider clickup --token pk_xxx` first."
-        )
-
-    raise NeedsChoice(
-        "This repo could use either tracker. Re-run with --provider <name>, "
-        "or with --profile <name> to let the credential decide.",
-        {
-            "action": "choose-provider",
-            "providers": sorted(p.value for p in providers),
-            "profiles": [p.redacted() for p in profiles],
-        },
-    )

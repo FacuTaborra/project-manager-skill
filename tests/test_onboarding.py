@@ -53,12 +53,12 @@ def stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
         def add_permissions(self) -> None:
             monkeypatch.setattr(
-                "src.claude_pm.application.permissions.missing_permissions", lambda: []
+                "src.claude_pm.infrastructure.permissions.missing_permissions", lambda: []
             )
 
         def break_permissions(self) -> None:
             monkeypatch.setattr(
-                "src.claude_pm.application.permissions.missing_permissions",
+                "src.claude_pm.infrastructure.permissions.missing_permissions",
                 lambda: ["Bash(pm:*)"],
             )
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from src.claude_pm.application import profiles
 from src.claude_pm.commands import creds
 from src.claude_pm.credentials import list_profiles
 from src.claude_pm.domain.models import Team
@@ -50,7 +51,7 @@ def _args(**overrides: object) -> argparse.Namespace:
 
 
 def _use(monkeypatch: pytest.MonkeyPatch, provider: FakeProvider) -> None:
-    monkeypatch.setattr(creds, "get_provider", lambda *a, **k: provider)
+    monkeypatch.setattr(profiles, "get_provider", lambda *a, **k: provider)
 
 
 class TestVerification:

@@ -3,11 +3,13 @@
 The standard library reads TOML but does not write it, and the schema here is
 small and fixed, so a template beats taking on a dependency in a package that
 has none. `tests/test_init_flow.py` closes the loop by parsing what this emits.
+
+Lives next to `pmfile.py`, which parses what this renders.
 """
 
 from __future__ import annotations
 
-from ..pmfile import PM_FILE_VERSION, Defaults, ScopeSpec
+from .pmfile import PM_FILE_VERSION, Defaults, ScopeSpec
 
 
 def render_pm_toml(
@@ -56,9 +58,9 @@ def render_pm_toml(
 def toml_string(value: str) -> str:
     """Render `value` as a quoted TOML basic string, escaping `\\` and `"`.
 
-    Shared with `commands/creds.py`, which writes profile fields (token,
-    provider, workspace_id) into the same file format and must not let an
-    unescaped quote or backslash in a token break the TOML it writes.
+    Shared with `credentials.py`, which writes profile fields (token, provider,
+    workspace_id) into the same file format and must not let an unescaped quote
+    or backslash in a token break the TOML it writes.
     """
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'

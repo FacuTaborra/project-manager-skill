@@ -48,7 +48,7 @@ def next_step(start: Path | None = None) -> Step:
 
 
 def _skill_step() -> Step | None:
-    from .permissions import missing_permissions
+    from ..infrastructure.permissions import missing_permissions
 
     if not SKILL_FILE.is_file():
         return Step(

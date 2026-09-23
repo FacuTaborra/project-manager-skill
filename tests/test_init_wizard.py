@@ -135,13 +135,13 @@ class TestFirstCredential:
         monkeypatch.setattr(init, "_run_once", lambda _a: 0)
         monkeypatch.setattr(init, "ask_secret", lambda _q: "pk_typed_by_hand")
         monkeypatch.setattr(init, "ask", lambda _q, default=None: "urbs")
-        monkeypatch.setattr(init.creds, "ask_provider", lambda: init.ProviderType.CLICKUP)
+        monkeypatch.setattr(init, "ask_provider", lambda: init.ProviderType.CLICKUP)
         monkeypatch.setattr(
-            init.creds, "verify_token", lambda p, t: ("dev@example.com", [_team("w1", "One")])
+            init, "verify_token", lambda p, t: ("dev@example.com", [_team("w1", "One")])
         )
-        monkeypatch.setattr(init.creds, "report", lambda *a: None)
+        monkeypatch.setattr(init, "report", lambda *a: None)
         monkeypatch.setattr(
-            init.creds,
+            init,
             "save_profile",
             lambda name, provider, token, ws, **kw: called.update(
                 name=name, provider=provider, token=token, ws=ws

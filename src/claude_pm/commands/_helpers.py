@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..application.prompt import is_interactive
 from ..application.scope import DryRun, ScopeGuard, build_guard, verify_workspace_pin
 from ..application.setup_flow import SetupService
 from ..config import Config
@@ -17,6 +16,7 @@ from ..infrastructure.cache import JsonFileCacheRepository
 from ..infrastructure.context.null import NullContext
 from ..infrastructure.context.obsidian import ObsidianVaultContext
 from ..infrastructure.providers._registry import get_provider
+from ._prompt import is_interactive
 
 
 def build_provider(config: Config) -> IssueProvider:
