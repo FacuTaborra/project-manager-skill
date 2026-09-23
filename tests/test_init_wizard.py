@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.commands import init
+from src.claude_pm.commands import _helpers, init
 from src.claude_pm.exceptions import NeedsChoice, PMError
 
 
@@ -35,7 +35,7 @@ def _args(**overrides: object) -> argparse.Namespace:
 
 class TestMachineProtocolUnchanged:
     def test_no_input_never_prompts_even_on_a_tty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(init, "is_interactive", lambda: True)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
         monkeypatch.setattr(
             init,
             "_run_once",
@@ -49,7 +49,7 @@ class TestMachineProtocolUnchanged:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         payload = {"action": "choose-workspace", "workspaces": [{"id": "w1", "name": "One"}]}
-        monkeypatch.setattr(init, "is_interactive", lambda: False)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: False)
         monkeypatch.setattr(
             init, "_run_once", lambda _a: (_ for _ in ()).throw(NeedsChoice("pick", payload))
         )
@@ -83,7 +83,7 @@ class TestWizardLoop:
                 raise NeedsChoice("pick", payloads.pop(0))
             return 0
 
-        monkeypatch.setattr(init, "is_interactive", lambda: True)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
         monkeypatch.setattr(init, "list_profiles", lambda: [object()])
         monkeypatch.setattr(init, "_run_once", fake_run_once)
         self._answers(monkeypatch, ["2", "1,2"])
@@ -130,7 +130,7 @@ class TestFirstCredential:
         """Sending someone to another command mid-flow is the friction we removed."""
         called: dict[str, object] = {}
 
-        monkeypatch.setattr(init, "is_interactive", lambda: True)
+        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
         monkeypatch.setattr(init, "list_profiles", lambda: [])
         monkeypatch.setattr(init, "_run_once", lambda _a: 0)
         monkeypatch.setattr(init, "ask_secret", lambda _q: "pk_typed_by_hand")

@@ -7,7 +7,7 @@ has none. `tests/test_init_flow.py` closes the loop by parsing what this emits.
 
 from __future__ import annotations
 
-from ..pmfile import SUPPORTED_VERSION, Defaults, ScopeSpec
+from ..pmfile import PM_FILE_VERSION, Defaults, ScopeSpec
 
 
 def render_pm_toml(
@@ -22,7 +22,7 @@ def render_pm_toml(
         "# Which board this repo writes to. Committed — the whole team shares it.",
         "# Secrets live in ~/.claude/pm/credentials.toml, never here.",
         "",
-        f"version  = {SUPPORTED_VERSION}",
+        f"version  = {PM_FILE_VERSION}",
         f"provider = {toml_string(provider)}",
         f"profile  = {toml_string(profile)}",
         "",

@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import argparse
 
-from ..application.setup_flow import SetupService
 from ..config import Config
 from ..exceptions import EXIT_OK
-from ._helpers import build_provider, get_cache_repo, print_json
+from ._helpers import build_provider, build_setup, print_json
 
 
 def run(args: argparse.Namespace) -> int:
     config = Config.load(args.repo_name, profile_override=args.profile)
     provider = build_provider(config)
-    cache_repo = get_cache_repo(config)
 
-    result = SetupService(provider, cache_repo, config).verify(force=args.force)
+    result = build_setup(config, provider).verify(force=args.force)
     cache = result.cache
 
     print_json(
@@ -34,7 +32,7 @@ def run(args: argparse.Namespace) -> int:
                 "labels": list(cache.labels),
                 "last_refresh": cache.last_refresh,
             },
-            "cache_path": str(cache_repo.path),
+            "cache_path": str(config.cache_path),
         }
     )
     return EXIT_OK

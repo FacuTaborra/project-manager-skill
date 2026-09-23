@@ -11,9 +11,10 @@ import argparse
 import sys
 
 from ..application.onboarding import SKILL_FILE, next_step
+from ..application.scope import verify_workspace_pin
 from ..config import DEFAULT_VAULT, Config
 from ..credentials import credentials_path, list_profiles, warn_if_world_readable
-from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError
+from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError, ScopeViolation
 from ..infrastructure.cache import find_legacy_caches
 from ..infrastructure.repo_detect import find_pm_file
 from ._helpers import build_provider
@@ -95,16 +96,14 @@ def _report_connectivity(config: Config) -> int:
     try:
         provider = build_provider(config)
         print(f"  Provider ping: ok — autenticado como {provider.viewer_email()}")
-        reachable = provider.workspace_ids()
     except ProviderError as exc:
         print(f"  Provider ping: FALLA — {exc}")
         return EXIT_ERROR
 
-    if config.scope.workspace_id not in reachable:
-        print(
-            f"  Pin workspace: FALLA — el token alcanza {', '.join(reachable) or '(ninguno)'}, "
-            f"no {config.scope.workspace_id}. Las escrituras van a ser rechazadas."
-        )
+    try:
+        verify_workspace_pin(config, provider)
+    except ScopeViolation as exc:
+        print(f"  Pin workspace: FALLA — {exc}")
         return EXIT_ERROR
 
     print(f"  Pin workspace: ok — el token alcanza {config.scope.workspace_id}")

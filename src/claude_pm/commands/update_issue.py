@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from ..domain.models import IssueUpdate
 from ..exceptions import EXIT_OK, PMError
-from ._helpers import prepare_write, print_result
+from ._helpers import prepare_write, print_result, read_text_arg
 
 
 def run(args: argparse.Namespace) -> int:
@@ -15,10 +14,7 @@ def run(args: argparse.Namespace) -> int:
 
     description: str | None = args.description
     if args.description_file:
-        path = Path(args.description_file).expanduser()
-        if not path.is_file():
-            raise PMError(f"Description file not found: {path}")
-        description = path.read_text(encoding="utf-8")
+        description = read_text_arg(args.description_file, "Description")
 
     state_id = guard.resolve_state_id(args.state)
     assignee_id = guard.resolve_assignee_id(args.assignee)

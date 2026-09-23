@@ -17,11 +17,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ._toml_schema import reject_unknown
 from .enums import ProviderType
 from .exceptions import ConfigError
 from .infrastructure.repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
 
-SUPPORTED_VERSION = 1
+PM_FILE_VERSION = 1
 
 _TOP_LEVEL_KEYS = {"version", "provider", "profile", "scope", "defaults"}
 _SCOPE_KEYS = {
@@ -86,7 +87,7 @@ class PmFile:
     profile: str
     scope: ScopeSpec
     defaults: Defaults = field(default_factory=Defaults)
-    version: int = SUPPORTED_VERSION
+    version: int = PM_FILE_VERSION
 
 
 def load_pm_file(start: Path | None = None) -> PmFile:
@@ -111,12 +112,12 @@ def parse_pm_file(text: str, *, path: Path) -> PmFile:
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
 
-    _reject_unknown(raw, _TOP_LEVEL_KEYS, path, "top level")
+    reject_unknown(raw, _TOP_LEVEL_KEYS, path, "top level")
 
-    version = _int(raw.get("version", SUPPORTED_VERSION), "version", path)
-    if version != SUPPORTED_VERSION:
+    version = _int(raw.get("version", PM_FILE_VERSION), "version", path)
+    if version != PM_FILE_VERSION:
         raise ConfigError(
-            f"{path}: unsupported version {version} (this build understands {SUPPORTED_VERSION}). "
+            f"{path}: unsupported version {version} (this build understands {PM_FILE_VERSION}). "
             "Upgrade pm, or re-run `pm init --force`."
         )
 
@@ -146,7 +147,7 @@ def parse_pm_file(text: str, *, path: Path) -> PmFile:
 
 
 def _scope(raw: dict[str, Any], path: Path) -> ScopeSpec:
-    _reject_unknown(raw, _SCOPE_KEYS, path, "[scope]")
+    reject_unknown(raw, _SCOPE_KEYS, path, "[scope]")
 
     workspace_id = _str(raw.get("workspace_id"), "scope.workspace_id", path, required=True)
     space_id = _str(raw.get("space_id"), "scope.space_id", path, required=True)
@@ -163,7 +164,7 @@ def _scope(raw: dict[str, Any], path: Path) -> ScopeSpec:
     for index, entry in enumerate(lists_raw):
         if not isinstance(entry, dict):
             raise ConfigError(f"{path}: [scope].lists[{index}] must be a {{ id, name }} table.")
-        _reject_unknown(entry, _LIST_KEYS, path, f"[scope].lists[{index}]")
+        reject_unknown(entry, _LIST_KEYS, path, f"[scope].lists[{index}]")
         list_id = _str(entry.get("id"), f"scope.lists[{index}].id", path, required=True)
         if list_id in seen:
             raise ConfigError(f"{path}: [scope].lists has {list_id} twice.")
@@ -180,7 +181,7 @@ def _scope(raw: dict[str, Any], path: Path) -> ScopeSpec:
 
 
 def _defaults(raw: dict[str, Any], path: Path) -> Defaults:
-    _reject_unknown(raw, _DEFAULTS_KEYS, path, "[defaults]")
+    reject_unknown(raw, _DEFAULTS_KEYS, path, "[defaults]")
 
     labels_raw = raw.get("labels", [])
     if not isinstance(labels_raw, list):
@@ -206,20 +207,7 @@ def _defaults(raw: dict[str, Any], path: Path) -> Defaults:
 def _provider(value: Any, path: Path) -> ProviderType:
     if value is None:
         raise ConfigError(f"{path}: missing `provider`. {_INIT_HINT}")
-    try:
-        return ProviderType(value)
-    except (ValueError, TypeError):
-        supported = ", ".join(p.value for p in ProviderType)
-        raise ConfigError(f"{path}: unknown provider {value!r}. Supported: {supported}.") from None
-
-
-def _reject_unknown(raw: dict[str, Any], allowed: set[str], path: Path, where: str) -> None:
-    unknown = sorted(set(raw) - allowed)
-    if unknown:
-        raise ConfigError(
-            f"{path}: unknown key(s) in {where}: {', '.join(unknown)}. "
-            f"Allowed: {', '.join(sorted(allowed))}."
-        )
+    return ProviderType.parse(value, where=f"{path}: ", error=ConfigError)
 
 
 def _str(value: Any, name: str, path: Path, *, required: bool = False) -> str:

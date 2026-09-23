@@ -19,10 +19,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ._toml_schema import reject_unknown
 from .enums import ProviderType
 from .exceptions import ConfigError, NeedsChoice
 
-SUPPORTED_VERSION = 1
+CREDENTIALS_VERSION = 1
 
 DEFAULT_CREDENTIALS_PATH = Path.home() / ".claude" / "pm" / "credentials.toml"
 
@@ -131,10 +132,10 @@ def list_profiles(path: Path | None = None) -> list[Profile]:
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{target} is not valid TOML: {exc}") from exc
 
-    version = raw.get("version", SUPPORTED_VERSION)
-    if version != SUPPORTED_VERSION:
+    version = raw.get("version", CREDENTIALS_VERSION)
+    if version != CREDENTIALS_VERSION:
         raise ConfigError(
-            f"{target}: unsupported version {version} (this build understands {SUPPORTED_VERSION})."
+            f"{target}: unsupported version {version} (this build understands {CREDENTIALS_VERSION})."
         )
 
     table = raw.get("profiles", {})
@@ -147,20 +148,11 @@ def list_profiles(path: Path | None = None) -> list[Profile]:
 def _profile(name: str, raw: Any, path: Path) -> Profile:
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: [profiles.{name}] must be a table.")
-    unknown = sorted(set(raw) - _PROFILE_KEYS)
-    if unknown:
-        raise ConfigError(
-            f"{path}: unknown key(s) in [profiles.{name}]: {', '.join(unknown)}. "
-            f"Allowed: {', '.join(sorted(_PROFILE_KEYS))}."
-        )
+    reject_unknown(raw, _PROFILE_KEYS, path, f"[profiles.{name}]")
 
-    try:
-        provider = ProviderType(str(raw.get("provider")))
-    except ValueError:
-        supported = ", ".join(p.value for p in ProviderType)
-        raise ConfigError(
-            f"{path}: [profiles.{name}].provider must be one of: {supported}."
-        ) from None
+    provider = ProviderType.parse(
+        raw.get("provider"), where=f"{path}: [profiles.{name}]: ", error=ConfigError
+    )
 
     token = raw.get("token")
     if not isinstance(token, str) or not token.strip():

@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import argparse
 
-from ..application.setup_flow import SetupService
 from ..exceptions import EXIT_OK, PMError
 from ._helpers import (
-    get_cache_repo,
+    build_setup,
     prepare_read,
     prepare_write,
     print_json,
@@ -28,7 +27,7 @@ def run_list_teams(args: argparse.Namespace) -> int:
 
 def run_list_states(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    cache = SetupService(provider, get_cache_repo(config), config).verify().cache
+    cache = build_setup(config, provider).verify().cache
     print_json({"states": cache.state_ids})
     return EXIT_OK
 
@@ -64,7 +63,10 @@ def run_create_project(args: argparse.Namespace) -> int:
     _, _, guard = prepare_write(args)
     print_result(
         guard.create_list(args.name),
-        lambda project: {"project": {"id": project.id, "name": project.name}},
+        lambda project: {
+            "ok": True,
+            "project": {"id": project.id, "name": project.name},
+        },
     )
     return EXIT_OK
 
@@ -73,7 +75,10 @@ def run_create_team(args: argparse.Namespace) -> int:
     _, _, guard = prepare_write(args)
     print_result(
         guard.create_space(args.name),
-        lambda team: {"team": {"id": team.id, "name": team.name, "key": team.key}},
+        lambda team: {
+            "ok": True,
+            "team": {"id": team.id, "name": team.name, "key": team.key},
+        },
     )
     return EXIT_OK
 

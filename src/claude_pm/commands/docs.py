@@ -7,11 +7,10 @@ workspace pin verified by the guard is what keeps them in the right account.
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from ..exceptions import EXIT_OK, PMError
 from ..infrastructure.providers.clickup import ClickUpProvider
-from ._helpers import prepare_write, print_result
+from ._helpers import prepare_write, print_result, read_text_arg
 
 
 def run_create_doc(args: argparse.Namespace) -> int:
@@ -53,9 +52,4 @@ def _require_clickup(provider: object, command: str) -> None:
 
 
 def _content(args: argparse.Namespace) -> str | None:
-    if not args.content_file:
-        return None
-    path = Path(args.content_file).expanduser()
-    if not path.is_file():
-        raise PMError(f"Content file not found: {path}")
-    return path.read_text(encoding="utf-8")
+    return read_text_arg(args.content_file or None, "Content")

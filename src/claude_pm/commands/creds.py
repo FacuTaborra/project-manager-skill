@@ -11,14 +11,14 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ..application.onboarding import next_step
-from ..application.prompt import Choice, ask, ask_secret, choose, is_interactive
+from ..application.prompt import Choice, ask, ask_secret, choose
 from ..application.toml_render import toml_string
 from ..credentials import credentials_path, list_profiles
 from ..domain.models import Team
 from ..enums import ProviderType
 from ..exceptions import EXIT_OK, PMError, ProviderError
 from ..infrastructure.providers._registry import get_provider
-from ._helpers import print_json
+from ._helpers import interactive, print_json
 
 _PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -51,17 +51,17 @@ def run_list(args: argparse.Namespace) -> int:
 
 
 def run_add(args: argparse.Namespace) -> int:
-    interactive = not getattr(args, "no_input", False) and is_interactive()
+    can_prompt = interactive(args)
 
     provider_type = _provider(args.provider) if args.provider else None
     if provider_type is None:
-        if not interactive:
+        if not can_prompt:
             raise PMError("Missing --provider. Supported: linear, clickup.")
         provider_type = ask_provider()
 
     token = args.token or os.environ.get(_ENV_NEW_TOKEN)
     if not token:
-        if not interactive:
+        if not can_prompt:
             raise PMError(
                 f"No token given. Pass --token, or set {_ENV_NEW_TOKEN} to keep it out of "
                 f"your shell history."
@@ -70,7 +70,7 @@ def run_add(args: argparse.Namespace) -> int:
 
     name = args.name
     if not name:
-        if not interactive:
+        if not can_prompt:
             raise PMError("Missing --name for the profile.")
         name = ask("Nombre para este perfil", default=provider_type.value)
 
@@ -197,11 +197,7 @@ def report(name: str, email: str, reachable: list[Team], workspace_id: str | Non
 
 
 def _provider(raw: str) -> ProviderType:
-    try:
-        return ProviderType(raw)
-    except ValueError:
-        supported = ", ".join(p.value for p in ProviderType)
-        raise PMError(f"Unknown provider {raw!r}. Supported: {supported}.") from None
+    return ProviderType.parse(raw)
 
 
 def _write_profiles(

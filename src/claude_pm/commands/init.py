@@ -18,7 +18,7 @@ from typing import Any
 
 from ..application.init_flow import build_scope, defaults_from_legacy, read_legacy_section
 from ..application.onboarding import next_step
-from ..application.prompt import Choice, ask, ask_secret, choose, is_interactive
+from ..application.prompt import Choice, ask, ask_secret, choose
 from ..application.toml_render import render_pm_toml
 from ..credentials import list_profiles, load_profile
 from ..domain.ports import IssueProvider
@@ -27,7 +27,7 @@ from ..exceptions import EXIT_OK, NeedsChoice, PMError
 from ..infrastructure.providers._registry import get_provider
 from ..infrastructure.repo_detect import PM_FILE_NAME, detect_repo_name, find_repo_root
 from . import creds
-from ._helpers import print_json
+from ._helpers import interactive, print_json
 
 DEFAULT_LEGACY_PATH = Path.home() / ".claude" / "skills" / "pm" / "projects.pm"
 
@@ -42,7 +42,7 @@ _QUESTIONS: dict[str, tuple[str, str, str, bool]] = {
 
 
 def run(args: argparse.Namespace) -> int:
-    if not _interactive(args):
+    if not interactive(args):
         return _run_once(args)
 
     if not list_profiles():
@@ -53,10 +53,6 @@ def run(args: argparse.Namespace) -> int:
             return _run_once(args)
         except NeedsChoice as choice:
             _answer(args, choice.payload)
-
-
-def _interactive(args: argparse.Namespace) -> bool:
-    return not getattr(args, "no_input", False) and is_interactive()
 
 
 def _add_first_credential(args: argparse.Namespace) -> None:
@@ -184,11 +180,7 @@ def _provider_name(args: argparse.Namespace, legacy) -> ProviderType:  # type: i
     """
     raw = args.provider or (legacy.provider if legacy else None)
     if raw is not None:
-        try:
-            return ProviderType(raw)
-        except ValueError:
-            supported = ", ".join(p.value for p in ProviderType)
-            raise PMError(f"Unknown provider {raw!r}. Supported: {supported}.") from None
+        return ProviderType.parse(raw)
 
     profiles = list_profiles()
     if args.profile:

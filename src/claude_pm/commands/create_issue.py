@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from ..exceptions import EXIT_OK, PMError
-from ._helpers import prepare_write, print_result
+from ._helpers import prepare_write, print_result, read_text_arg
 
 
 def run(args: argparse.Namespace) -> int:
@@ -35,11 +34,9 @@ def run(args: argparse.Namespace) -> int:
 
 
 def _description(args: argparse.Namespace) -> str:
-    if args.description_file:
-        path = Path(args.description_file).expanduser()
-        if not path.is_file():
-            raise PMError(f"Description file not found: {path}")
-        return path.read_text(encoding="utf-8")
+    from_file = read_text_arg(args.description_file or None, "Description")
+    if from_file is not None:
+        return from_file
     if args.description:
         return str(args.description)
     raise PMError("Either --description or --description-file is required.")

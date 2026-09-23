@@ -65,7 +65,7 @@ class TestListProfiles:
             list_profiles(_write(tmp_path, ONE_PROFILE.replace("pk_cccccccccccc", "")))
 
     def test_rejects_unknown_provider(self, tmp_path: Path) -> None:
-        with pytest.raises(ConfigError, match="must be one of"):
+        with pytest.raises(ConfigError, match="Unknown provider"):
             list_profiles(_write(tmp_path, ONE_PROFILE.replace("clickup", "jira")))
 
 

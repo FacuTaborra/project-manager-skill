@@ -84,7 +84,7 @@ class Config:
             vault_path=_vault_path(),
         )
 
-    def require_pak(self) -> str:
+    def require_token(self) -> str:
         if not self.profile.token:
             raise ConfigError(
                 f"Credential profile {self.profile.name!r} has no token. "
