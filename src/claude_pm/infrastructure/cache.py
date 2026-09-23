@@ -111,36 +111,6 @@ class JsonFileCacheRepository:
         return _cache_from_dict(data)
 
 
-class InMemoryCacheRepository:
-    """In-memory implementation for tests — no filesystem I/O."""
-
-    def __init__(self, initial: Cache | None = None) -> None:
-        self._cache = initial or Cache()
-
-    def load(self) -> Cache:
-        return self._cache
-
-    def write(
-        self,
-        *,
-        space_id: str,
-        space_name: str,
-        lists: list[dict[str, str]],
-        state_ids: dict[str, str],
-        labels: list[dict[str, str]] | None = None,
-    ) -> Cache:
-        self._cache = Cache(
-            fingerprint=self._cache.fingerprint,
-            space_id=space_id,
-            space_name=space_name,
-            lists=tuple(lists),
-            state_ids=state_ids,
-            labels=tuple(labels or []),
-            last_refresh=datetime.now(UTC).isoformat(),
-        )
-        return self._cache
-
-
 def _cache_from_dict(data: dict[str, Any]) -> Cache:
     raw_states = data.get("state_ids", {})
     return Cache(

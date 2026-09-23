@@ -19,7 +19,7 @@ from ._helpers import (
 
 def run(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    cache = SetupService(provider, get_cache_repo(config), config).ensure()
+    cache = SetupService(provider, get_cache_repo(config), config).verify().cache
 
     projects = cache.lists
     if not projects:

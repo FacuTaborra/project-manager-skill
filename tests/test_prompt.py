@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.claude_pm.application.prompt import Choice, choose, confirm, is_interactive
+from src.claude_pm.application.prompt import Choice, choose, is_interactive
 from src.claude_pm.application.prompt import _parse_selection as parse
 from src.claude_pm.exceptions import PMError
 
@@ -74,23 +74,6 @@ class TestChoose:
         monkeypatch.setattr("builtins.input", raise_eof)
         with pytest.raises(PMError, match="Cancelado"):
             choose("¿cuál?", OPTIONS)
-
-
-class TestConfirm:
-    @pytest.mark.parametrize("answer", ["s", "S", "si", "y", "yes"])
-    def test_yes(self, monkeypatch, answer: str) -> None:
-        monkeypatch.setattr("builtins.input", lambda _: answer)
-        assert confirm("¿seguimos?") is True
-
-    @pytest.mark.parametrize("answer", ["n", "N", "no"])
-    def test_no(self, monkeypatch, answer: str) -> None:
-        monkeypatch.setattr("builtins.input", lambda _: answer)
-        assert confirm("¿seguimos?") is False
-
-    def test_empty_takes_the_default(self, monkeypatch) -> None:
-        monkeypatch.setattr("builtins.input", lambda _: "")
-        assert confirm("¿seguimos?", default=True) is True
-        assert confirm("¿seguimos?", default=False) is False
 
 
 class TestInteractiveDetection:

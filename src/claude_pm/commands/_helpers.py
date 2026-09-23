@@ -44,7 +44,7 @@ def prepare_write(args: Any) -> tuple[Config, IssueProvider, ScopeGuard]:
     config = Config.load(args.repo_name, profile_override=getattr(args, "profile", None))
     provider = build_provider(config)
     verify_workspace_pin(config, provider)
-    cache = SetupService(provider, get_cache_repo(config), config).ensure()
+    cache = SetupService(provider, get_cache_repo(config), config).verify().cache
     guard = build_guard(
         config,
         provider,

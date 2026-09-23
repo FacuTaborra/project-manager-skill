@@ -44,10 +44,6 @@ class IssueProvider(Protocol):
         """List projects, optionally filtered by team."""
         ...
 
-    def find_projects(self, name_query: str) -> list[Project]:
-        """Find projects whose name matches the query (case-insensitive substring)."""
-        ...
-
     def create_project(self, name: str, team_id: str) -> Project:
         """Create a new project in the given team."""
         ...

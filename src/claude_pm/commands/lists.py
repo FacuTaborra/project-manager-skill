@@ -28,7 +28,7 @@ def run_list_teams(args: argparse.Namespace) -> int:
 
 def run_list_states(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    cache = SetupService(provider, get_cache_repo(config), config).ensure()
+    cache = SetupService(provider, get_cache_repo(config), config).verify().cache
     print_json({"states": cache.state_ids})
     return EXIT_OK
 

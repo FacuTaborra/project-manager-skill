@@ -57,9 +57,6 @@ class ClickUpProvider:
             raise ProviderError(f"Unexpected ClickUp response: {type(result).__name__}")
         return result
 
-    def _get_v3(self, path: str) -> Any:
-        return self._http.get_json(f"{CLICKUP_API_V3_BASE}/{path}")
-
     def _post_v3(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         result = self._http.post_json(body, url=f"{CLICKUP_API_V3_BASE}/{path}")
         if not isinstance(result, dict):
@@ -97,19 +94,6 @@ class ClickUpProvider:
         data = self._get(f"team/{workspace_id}/space?archived=false")
         spaces = data.get("spaces") or []
         return [Team(id=s["id"], name=s["name"], key=s["id"][:8]) for s in spaces]
-
-    def find_projects(self, name_query: str) -> list[Project]:
-        workspace_id = self._workspace()
-        # Search across all spaces for lists matching name_query.
-        data = self._get(f"team/{workspace_id}/space?archived=false")
-        spaces = data.get("spaces") or []
-        matches: list[Project] = []
-        q = name_query.lower()
-        for space in spaces:
-            for lst in self._lists_in_space(space["id"]):
-                if q in lst.name.lower():
-                    matches.append(lst)
-        return matches
 
     def list_projects(self, team_id: str | None = None) -> list[Project]:
         if team_id:
@@ -156,13 +140,6 @@ class ClickUpProvider:
         """
         data = self._get(f"space/{team_id}/tag")
         return [Label(id=t["name"], name=t["name"]) for t in data.get("tags") or []]
-
-    def create_label(self, team_id: str, name: str) -> Label:
-        self._post(
-            f"space/{team_id}/tag",
-            {"tag": {"name": name, "tag_fg": "#ffffff", "tag_bg": "#0a7ea4"}},
-        )
-        return Label(id=name, name=name)
 
     def resolve_user_by_email(self, email: str) -> User | None:
         workspace_id = self._workspace()

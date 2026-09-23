@@ -55,14 +55,6 @@ def ask_secret(question: str) -> str:
         print("  Hace falta una respuesta.")
 
 
-def confirm(question: str, *, default: bool = True) -> bool:
-    suffix = "[S/n]" if default else "[s/N]"
-    answer = _read(f"{question} {suffix}: ").strip().lower()
-    if not answer:
-        return default
-    return answer[0] in "syt"
-
-
 def choose(question: str, options: Sequence[Choice], *, multi: bool = False) -> list[str]:
     """Numbered menu. Returns the chosen ids, in the order they were offered."""
     if not options:
