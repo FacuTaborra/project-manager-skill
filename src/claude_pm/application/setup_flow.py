@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..config import Config
 from ..domain.ports import IssueProvider
 from ..exceptions import PMError
 from ..infrastructure.cache import Cache, CacheRepository
+from .repo_context import Config
 
 
 @dataclass

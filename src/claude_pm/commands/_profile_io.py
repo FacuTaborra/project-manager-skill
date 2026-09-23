@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import sys
 
-from ..credentials import credentials_path
+from ..domain.binding import ProviderType
 from ..domain.models import Team
-from ..enums import ProviderType
+from ..infrastructure.config_files.credentials_store import credentials_path
 from ._prompt import Choice, choose
 
 WHERE_TO_GET_ONE = {

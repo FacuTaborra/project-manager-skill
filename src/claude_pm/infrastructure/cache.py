@@ -13,6 +13,8 @@ validated.
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +22,18 @@ from typing import Any, Protocol
 
 CACHE_TTL_DAYS = 30
 CACHE_VERSION = 2
+
+
+def cache_root() -> Path:
+    """Where machine state lives — never the Obsidian vault, which is for humans."""
+    env = os.environ.get("PM_CACHE_DIR")
+    if env:
+        return Path(env).expanduser()
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            return Path(local) / "claude-pm"
+    return Path.home() / ".cache" / "claude-pm"
 
 
 @dataclass(frozen=True)

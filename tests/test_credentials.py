@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.credentials import Profile, list_profiles, load_profile
-from src.claude_pm.enums import ProviderType
+from src.claude_pm.application.profiles import load_profile
+from src.claude_pm.domain.binding import Profile, ProviderType
 from src.claude_pm.exceptions import ConfigError, NeedsChoice
+from src.claude_pm.infrastructure.config_files.credentials_store import list_profiles
 
 TWO_PROFILES = """
 version = 1

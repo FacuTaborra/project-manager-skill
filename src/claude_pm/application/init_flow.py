@@ -16,9 +16,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..domain.binding import Defaults, ListRef, ScopeSpec
 from ..domain.ports import IssueProvider
 from ..exceptions import NeedsChoice, PMError
-from ..pmfile import Defaults, ListRef, ScopeSpec
 
 
 @dataclass(frozen=True)

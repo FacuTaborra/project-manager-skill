@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..config import Config
+from ..application.repo_context import Config
 from ..exceptions import EXIT_OK
 from ._helpers import build_provider, build_setup, print_json
 

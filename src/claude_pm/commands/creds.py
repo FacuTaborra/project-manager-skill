@@ -7,17 +7,16 @@ import os
 import sys
 
 from ..application.onboarding import next_step
-from ..application.profiles import pick_workspace, verify_token
-from ..credentials import (
+from ..application.profiles import pick_workspace, save_profile, verify_token
+from ..domain.binding import ProviderType
+from ..exceptions import EXIT_OK, PMError
+from ..infrastructure.config_files.credentials_store import (
     LEGACY_SECRETS,
     credentials_path,
     find_legacy_tokens,
     list_profiles,
-    save_profile,
     write_profiles,
 )
-from ..enums import ProviderType
-from ..exceptions import EXIT_OK, PMError
 from ._helpers import interactive, print_json
 from ._profile_io import WHERE_TO_GET_ONE, ask_provider, report
 from ._prompt import ask, ask_secret

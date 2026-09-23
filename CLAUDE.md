@@ -43,9 +43,9 @@ Dos archivos, y ninguno vive en el clone del skill:
 
 - **`<repo>/.pm.toml`** — se commitea. Provider, perfil de credencial, y el `[scope]` que declara
   workspace/space/lists por ID. Su ausencia es la primera barrera: sin él no hay escritura.
-  Parser en [src/claude_pm/pmfile.py](src/claude_pm/pmfile.py).
+  Parser en [src/claude_pm/infrastructure/config_files/pm_file.py](src/claude_pm/infrastructure/config_files/pm_file.py).
 - **`~/.claude/pm/credentials.toml`** — nunca se commitea, `chmod 600`. Perfiles nombrados.
-  Parser en [src/claude_pm/credentials.py](src/claude_pm/credentials.py).
+  Parser en [src/claude_pm/infrastructure/config_files/credentials_store.py](src/claude_pm/infrastructure/config_files/credentials_store.py).
 
 Las claves desconocidas se **rechazan**, no se ignoran. El formato INI viejo las tragaba en
 silencio, y así fue como su campo `label:` estuvo meses sin hacer nada.

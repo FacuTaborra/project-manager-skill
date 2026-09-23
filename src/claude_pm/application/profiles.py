@@ -1,18 +1,40 @@
-"""Shared by `pm creds add` and the `pm init` wizard.
+"""Credential profile resolution, verification, and storage.
 
-Proving a token works, and deciding which tracker a repo means when nobody
-said so outright, are the two pieces of workflow both commands need. Living
-here rather than in one command module or the other is what lets `init` add a
-first credential without importing `commands/creds.py`.
+Resolving which profile a run should use, proving a token works, and deciding
+which tracker a repo means when nobody said so outright, are the pieces of
+workflow `pm creds add` and the `pm init` wizard both need. Living here rather
+than in one command module or the other is what lets `init` add a first
+credential without importing `commands/creds.py`.
+
+The ambient `LINEAR_API_KEY` / `CLICKUP_API_KEY` variables are deliberately NOT
+read: picking up a token from whatever directory you happen to be standing in is
+the behaviour this design exists to remove. CI passes `PM_TOKEN` explicitly.
 """
 
 from __future__ import annotations
 
-from ..credentials import list_profiles
+import os
+import re
+from pathlib import Path
+
+from ..domain.binding import Profile, ProviderType
 from ..domain.models import Team
-from ..enums import ProviderType
-from ..exceptions import NeedsChoice, PMError, ProviderError
+from ..exceptions import ConfigError, NeedsChoice, PMError, ProviderError
+from ..infrastructure.config_files.credentials_store import (
+    credentials_path,
+    list_profiles,
+    write_profiles,
+)
 from ..infrastructure.providers._registry import get_provider
+
+_PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_ENV_TOKEN = "PM_TOKEN"
+_ENV_PROFILE = "PM_PROFILE"
+
+_SETUP_HINT = (
+    "Add one with `pm creds import` (migrates ~/.claude/secrets/*.env) "
+    "or by writing the file yourself."
+)
 
 
 def verify_token(provider: ProviderType, token: str) -> tuple[str, list[Team]]:
@@ -79,3 +101,84 @@ def infer_provider(
             "profiles": [p.redacted() for p in profiles],
         },
     )
+
+
+def load_profile(
+    name: str | None,
+    *,
+    provider: ProviderType | None = None,
+    path: Path | None = None,
+) -> Profile:
+    """Resolve one profile by name.
+
+    `PM_TOKEN` short-circuits the file entirely, for CI. Otherwise the name comes
+    from `.pm.toml` (or `PM_PROFILE`); when neither names one and the file holds
+    exactly one profile, that one is used.
+    """
+    wanted = name or os.environ.get(_ENV_PROFILE)
+
+    env_token = os.environ.get(_ENV_TOKEN)
+    if env_token:
+        if provider is None:
+            raise ConfigError(f"{_ENV_TOKEN} is set but the provider is unknown.")
+        return Profile(
+            name=wanted or "env",
+            provider=provider,
+            token=env_token,
+            workspace_id=os.environ.get("PM_WORKSPACE_ID"),
+        )
+
+    profiles = list_profiles(path)
+    if not profiles:
+        raise ConfigError(f"No credential profiles in {path or credentials_path()}.\n{_SETUP_HINT}")
+
+    if wanted:
+        match = next((p for p in profiles if p.name == wanted), None)
+        if match is None:
+            available = ", ".join(p.name for p in profiles)
+            raise ConfigError(
+                f"Credential profile {wanted!r} not found in {path or credentials_path()}. "
+                f"Available: {available}."
+            )
+        return match
+
+    # Offering a Linear profile for a ClickUp repo is not a choice, it is noise.
+    candidates = [p for p in profiles if p.provider is provider] if provider else profiles
+    if not candidates:
+        available = ", ".join(f"{p.name} ({p.provider.value})" for p in profiles)
+        raise ConfigError(
+            f"No {provider.value if provider else ''} profile in "
+            f"{path or credentials_path()}. Available: {available}.\n"
+            f"Add one with `pm creds add --name <name> --provider "
+            f"{provider.value if provider else '<provider>'} --token ...`."
+        )
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    raise NeedsChoice(
+        "Several credential profiles exist and none was named. "
+        "Re-run with --profile <NAME>, or set `profile` in .pm.toml.",
+        {"action": "choose-profile", "profiles": [p.redacted() for p in candidates]},
+    )
+
+
+def save_profile(
+    name: str,
+    provider: ProviderType,
+    token: str,
+    workspace_id: str | None,
+    *,
+    force: bool = False,
+    path: Path | None = None,
+) -> None:
+    if not _PROFILE_NAME_RE.match(name):
+        raise PMError(
+            f"Profile name {name!r} is not a valid TOML key. Use only letters, digits, '_' and '-'."
+        )
+    target = path or credentials_path()
+    if any(p.name == name for p in list_profiles(target)) and not force:
+        raise PMError(
+            f"Profile {name!r} already exists in {target}. Re-run with --force to replace it."
+        )
+    write_profiles(target, [(name, provider, token, workspace_id)], replace=force)

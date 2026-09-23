@@ -19,12 +19,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from ..config import Config
+from ..domain.binding import Defaults, ScopeSpec
 from ..domain.models import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
 from ..domain.ports import DocProvider, IssueProvider
 from ..exceptions import NeedsChoice, PMError, ScopeViolation
 from ..infrastructure.cache import Cache
-from ..pmfile import Defaults, ScopeSpec
+from .repo_context import Config
 
 
 @dataclass(frozen=True)

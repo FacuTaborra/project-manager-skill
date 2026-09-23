@@ -15,10 +15,10 @@ from src.claude_pm.application.init_flow import (
     resolve_space,
     resolve_workspace,
 )
+from src.claude_pm.domain.binding import Defaults, ListRef, ScopeSpec
 from src.claude_pm.domain.models import Project, Team
 from src.claude_pm.exceptions import NeedsChoice, PMError
-from src.claude_pm.pmfile import Defaults, ListRef, ScopeSpec, parse_pm_file
-from src.claude_pm.pmfile_render import render_pm_toml
+from src.claude_pm.infrastructure.config_files.pm_file import parse_pm_file, render_pm_toml
 
 LEGACY = """\
 # Mapeo de repos a proyectos en el tracker.

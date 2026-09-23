@@ -1,4 +1,4 @@
-"""Parse `<repo>/.pm.toml` — the repo's binding to a board.
+"""Read and write `<repo>/.pm.toml` — the repo's binding to a board.
 
 This file is committed, so the whole team inherits the same binding. It holds no
 secrets: the `profile` key names a credential in `~/.claude/pm/credentials.toml`.
@@ -8,21 +8,23 @@ Its presence is the first barrier. No `.pm.toml`, no writes.
 Unknown keys are rejected rather than ignored. The old INI format silently
 dropped anything it did not recognise, which is how its `label:` key sat there
 doing nothing for months.
+
+The standard library reads TOML but does not write it, and the schema here is
+small and fixed, so a template beats taking on a dependency in a package that
+has none. `tests/test_init_flow.py` closes the loop by parsing what `render_pm_toml`
+emits.
 """
 
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ._toml_schema import reject_unknown
-from .enums import ProviderType
-from .exceptions import ConfigError
-from .infrastructure.repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
-
-PM_FILE_VERSION = 1
+from ...domain.binding import PM_FILE_VERSION, Defaults, ListRef, PmFile, ProviderType, ScopeSpec
+from ...exceptions import ConfigError
+from ..repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
+from ._toml import reject_unknown, toml_string
 
 _TOP_LEVEL_KEYS = {"version", "provider", "profile", "scope", "defaults"}
 _SCOPE_KEYS = {
@@ -36,58 +38,6 @@ _DEFAULTS_KEYS = {"labels", "state", "priority"}
 _LIST_KEYS = {"id", "name"}
 
 _INIT_HINT = f"Run `pm init` in the repo root to write a {PM_FILE_NAME}."
-
-
-@dataclass(frozen=True)
-class ListRef:
-    """A writable destination: a ClickUp list or a Linear project."""
-
-    id: str
-    name: str
-
-
-@dataclass(frozen=True)
-class ScopeSpec:
-    """The allowlist. Nothing outside it can be written to.
-
-    The `*_name` fields never resolve anything — the ids do. They exist so errors
-    can name the board a human recognises, and so drift is detectable when
-    someone renames it in the tracker.
-    """
-
-    workspace_id: str
-    space_id: str
-    lists: tuple[ListRef, ...]
-    workspace_name: str = ""
-    space_name: str = ""
-
-    @property
-    def list_ids(self) -> frozenset[str]:
-        return frozenset(ref.id for ref in self.lists)
-
-    def describe(self) -> str:
-        names = ", ".join(ref.name or ref.id for ref in self.lists)
-        return f"{self.workspace_name or self.workspace_id} → {self.space_name or self.space_id} → {names}"
-
-
-@dataclass(frozen=True)
-class Defaults:
-    """Applied to every issue created from this repo."""
-
-    labels: tuple[str, ...] = ()
-    state: str | None = None
-    priority: int | None = None
-
-
-@dataclass(frozen=True)
-class PmFile:
-    path: Path
-    repo_root: Path
-    provider: ProviderType
-    profile: str
-    scope: ScopeSpec
-    defaults: Defaults = field(default_factory=Defaults)
-    version: int = PM_FILE_VERSION
 
 
 def load_pm_file(start: Path | None = None) -> PmFile:
@@ -224,3 +174,46 @@ def _int(value: Any, name: str, path: Path) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(f"{path}: `{name}` must be an integer, got {type(value).__name__}.")
     return value
+
+
+def render_pm_toml(
+    *,
+    provider: str,
+    profile: str,
+    scope: ScopeSpec,
+    defaults: Defaults | None = None,
+) -> str:
+    defaults = defaults or Defaults()
+    lines = [
+        "# Which board this repo writes to. Committed — the whole team shares it.",
+        "# Secrets live in ~/.claude/pm/credentials.toml, never here.",
+        "",
+        f"version  = {PM_FILE_VERSION}",
+        f"provider = {toml_string(provider)}",
+        f"profile  = {toml_string(profile)}",
+        "",
+        "# The allowlist. Nothing outside it can be written to.",
+        "[scope]",
+        f"workspace_id   = {toml_string(scope.workspace_id)}",
+        f"workspace_name = {toml_string(scope.workspace_name)}",
+        f"space_id       = {toml_string(scope.space_id)}",
+        f"space_name     = {toml_string(scope.space_name)}",
+        "lists = [",
+    ]
+    lines.extend(
+        f"  {{ id = {toml_string(ref.id)}, name = {toml_string(ref.name)} }},"
+        for ref in scope.lists
+    )
+    lines.append("]")
+
+    if defaults.labels or defaults.state or defaults.priority is not None:
+        lines.extend(["", "[defaults]"])
+        if defaults.labels:
+            joined = ", ".join(toml_string(label) for label in defaults.labels)
+            lines.append(f"labels   = [{joined}]")
+        if defaults.state:
+            lines.append(f"state    = {toml_string(defaults.state)}")
+        if defaults.priority is not None:
+            lines.append(f"priority = {defaults.priority}")
+
+    return "\n".join(lines) + "\n"

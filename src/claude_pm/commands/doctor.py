@@ -11,11 +11,16 @@ import argparse
 import sys
 
 from ..application.onboarding import SKILL_FILE, next_step
+from ..application.repo_context import Config
 from ..application.scope import verify_workspace_pin
-from ..config import DEFAULT_VAULT, Config
-from ..credentials import credentials_path, list_profiles, warn_if_world_readable
 from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError, ScopeViolation
 from ..infrastructure.cache import find_legacy_caches
+from ..infrastructure.config_files.credentials_store import (
+    credentials_path,
+    list_profiles,
+    warn_if_world_readable,
+)
+from ..infrastructure.context.obsidian import DEFAULT_VAULT
 from ..infrastructure.repo_detect import find_pm_file
 from ._helpers import build_provider
 

@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..application.repo_context import Config
 from ..application.scope import DryRun, ScopeGuard, build_guard, verify_workspace_pin
 from ..application.setup_flow import SetupService
-from ..config import Config
 from ..domain.models import Briefing, Issue
 from ..domain.ports import ContextProvider, IssueProvider
 from ..exceptions import PMError

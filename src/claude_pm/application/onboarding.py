@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..credentials import credentials_path, list_profiles
 from ..exceptions import PMError
+from ..infrastructure.config_files.credentials_store import credentials_path, list_profiles
 from ..infrastructure.repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
 
 SKILL_DIR = Path.home() / ".claude" / "skills" / "pm"

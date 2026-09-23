@@ -7,33 +7,19 @@ token opens it. Everything else here is derived from those two.
 from __future__ import annotations
 
 import hashlib
-import os
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .credentials import Profile, load_profile
-from .enums import ProviderType
-from .exceptions import ConfigError
-from .infrastructure.repo_detect import detect_repo_name
-from .pmfile import PmFile, ScopeSpec, load_pm_file
-
-DEFAULT_VAULT = Path.home() / ".claude-memory"
+from ..domain.binding import PmFile, Profile, ProviderType, ScopeSpec
+from ..exceptions import ConfigError
+from ..infrastructure.cache import cache_root
+from ..infrastructure.config_files.pm_file import load_pm_file
+from ..infrastructure.context.obsidian import vault_path_from_env
+from ..infrastructure.repo_detect import detect_repo_name
+from .profiles import load_profile
 
 _SLUG_RE = re.compile(r"[^a-z0-9._-]+")
-
-
-def cache_root() -> Path:
-    """Where machine state lives — never the Obsidian vault, which is for humans."""
-    env = os.environ.get("PM_CACHE_DIR")
-    if env:
-        return Path(env).expanduser()
-    if sys.platform == "win32":
-        local = os.environ.get("LOCALAPPDATA")
-        if local:
-            return Path(local) / "claude-pm"
-    return Path.home() / ".cache" / "claude-pm"
 
 
 @dataclass(frozen=True)
@@ -81,7 +67,7 @@ class Config:
             repo_name=repo_name,
             cache_path=cache_root() / f"{_slug(repo_name)}-{fingerprint}.json",
             fingerprint=fingerprint,
-            vault_path=_vault_path(),
+            vault_path=vault_path_from_env(),
         )
 
     def require_token(self) -> str:
@@ -133,9 +119,3 @@ def _fingerprint(pm_file: PmFile, profile: Profile) -> str:
 def _slug(name: str) -> str:
     slug = _SLUG_RE.sub("-", name.lower()).strip("-")
     return slug or "repo"
-
-
-def _vault_path() -> Path | None:
-    env = os.environ.get("CLAUDE_MEMORY_PATH")
-    path = Path(env).expanduser() if env else DEFAULT_VAULT
-    return path if path.is_dir() else None

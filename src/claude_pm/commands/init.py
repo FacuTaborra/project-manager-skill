@@ -23,14 +23,20 @@ from ..application.init_flow import (
     read_legacy_section,
 )
 from ..application.onboarding import next_step
-from ..application.profiles import infer_provider, pick_workspace, verify_token
-from ..credentials import list_profiles, load_profile, save_profile
+from ..application.profiles import (
+    infer_provider,
+    load_profile,
+    pick_workspace,
+    save_profile,
+    verify_token,
+)
+from ..domain.binding import ProviderType
 from ..domain.ports import IssueProvider
-from ..enums import ProviderType
 from ..exceptions import EXIT_OK, NeedsChoice, PMError
+from ..infrastructure.config_files.credentials_store import list_profiles
+from ..infrastructure.config_files.pm_file import render_pm_toml
 from ..infrastructure.providers._registry import get_provider
 from ..infrastructure.repo_detect import PM_FILE_NAME, detect_repo_name, find_repo_root
-from ..pmfile_render import render_pm_toml
 from ._helpers import interactive, print_json
 from ._profile_io import WHERE_TO_GET_ONE, ask_provider, report
 from ._prompt import Choice, ask, ask_secret, choose

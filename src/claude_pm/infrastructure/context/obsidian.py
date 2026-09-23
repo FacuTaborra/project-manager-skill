@@ -6,7 +6,17 @@ is conventional (frontmatter + sections); we only return a truncated excerpt.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+DEFAULT_VAULT = Path.home() / ".claude-memory"
+
+
+def vault_path_from_env() -> Path | None:
+    """Resolve the configured vault path, or None when it does not exist on disk."""
+    env = os.environ.get("CLAUDE_MEMORY_PATH")
+    path = Path(env).expanduser() if env else DEFAULT_VAULT
+    return path if path.is_dir() else None
 
 
 class ObsidianVaultContext:

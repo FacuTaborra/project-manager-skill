@@ -9,11 +9,11 @@ default in the same Namespace. So it is `pm create-issue --dry-run`, never
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 
 from . import __version__
-from ._stdio import force_utf8_stdio
 from .commands import (
     briefing,
     create_issue,
@@ -29,6 +29,19 @@ from .commands import (
     update_issue,
 )
 from .exceptions import EXIT_ERROR, EXIT_OK, NeedsChoice, PMError
+
+
+def _force_utf8_stdio() -> None:
+    """Reconfigure stdout/stderr to UTF-8.
+
+    Windows defaults to cp1252 which mangles em-dashes, accents, and emoji that
+    appear in briefings and JSON output. Safe no-op on POSIX.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(Exception):
+                reconfigure(encoding="utf-8", errors="replace")
 
 
 def _common_parser() -> argparse.ArgumentParser:
@@ -307,7 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    force_utf8_stdio()
+    _force_utf8_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

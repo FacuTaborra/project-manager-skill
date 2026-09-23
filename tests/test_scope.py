@@ -7,19 +7,17 @@ from typing import Any
 
 import pytest
 
+from src.claude_pm.application.repo_context import Config
 from src.claude_pm.application.scope import (
     DryRun,
     ScopeGuard,
     build_guard,
     verify_workspace_pin,
 )
-from src.claude_pm.config import Config
-from src.claude_pm.credentials import Profile
+from src.claude_pm.domain.binding import Defaults, ListRef, PmFile, Profile, ProviderType, ScopeSpec
 from src.claude_pm.domain.models import Doc, Issue, IssueUpdate, Label, Project, State, Team, User
-from src.claude_pm.enums import ProviderType
 from src.claude_pm.exceptions import NeedsChoice, PMError, ScopeViolation
 from src.claude_pm.infrastructure.cache import Cache
-from src.claude_pm.pmfile import Defaults, ListRef, PmFile, ScopeSpec
 
 IN_SCOPE = "list-in"
 OTHER = "list-out"

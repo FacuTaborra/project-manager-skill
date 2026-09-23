@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm._toml_schema import toml_string
 from src.claude_pm.application import profiles
 from src.claude_pm.commands import creds
-from src.claude_pm.credentials import list_profiles
 from src.claude_pm.domain.models import Team
 from src.claude_pm.exceptions import PMError, ProviderError
+from src.claude_pm.infrastructure.config_files._toml import toml_string
+from src.claude_pm.infrastructure.config_files.credentials_store import list_profiles
 
 
 class FakeProvider:
