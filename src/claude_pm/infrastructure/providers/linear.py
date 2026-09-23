@@ -20,6 +20,24 @@ from ._http import HttpClient
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 
+_SEARCH_ISSUES_QUERY = """
+query($q: String!) {
+  searchIssues(term: $q, first: 20) {
+    nodes { identifier title state { id name }
+            project { id name } }
+  }
+}
+"""
+
+_ISSUE_SEARCH_LEGACY_QUERY = """
+query($q: String!) {
+  issueSearch(query: $q, first: 20) {
+    nodes { identifier title state { id name }
+            project { id name } }
+  }
+}
+"""
+
 
 class LinearProvider:
     """Implements IssueProvider against Linear's GraphQL API.
@@ -35,24 +53,23 @@ class LinearProvider:
         workspace_id: str | None = None,
         http: HttpClient | None = None,
     ) -> None:
-        self._http = http or HttpClient(
-            url=LINEAR_API_URL,
-            headers={"Authorization": token},
-        )
+        self._http = http or HttpClient(headers={"Authorization": token})
         # Linear routes by team/project, so the pin is never part of a URL here.
         # It is accepted anyway so the guard can verify it the same way for both
         # providers, with no per-provider branching at the call site.
         self._workspace_id = workspace_id
 
     def _query(self, graphql: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
-        payload = self._http.post_json({"query": graphql, "variables": variables or {}})
-        errors = payload.get("errors")
+        response = self._http.post_json(
+            LINEAR_API_URL, {"query": graphql, "variables": variables or {}}
+        )
+        errors = response.get("errors")
         if errors:
             messages = "; ".join(str(e.get("message", "?")) for e in errors)
             raise ProviderError(f"Linear API returned errors: {messages}")
-        data = payload.get("data")
+        data = response.get("data")
         if not isinstance(data, dict):
-            raise ProviderError(f"Unexpected response shape: {payload}")
+            raise ProviderError(f"Unexpected response shape: {response}")
         return data
 
     def viewer_email(self) -> str:
@@ -97,13 +114,18 @@ class LinearProvider:
         )
         nodes = (data.get("projects") or {}).get("nodes") or []
         result = []
-        for n in nodes:
+        for project_node in nodes:
             if team_id:
-                team_ids = [t["id"] for t in (n.get("teams") or {}).get("nodes", [])]
+                team_ids = [t["id"] for t in (project_node.get("teams") or {}).get("nodes", [])]
                 if team_id not in team_ids:
                     continue
             result.append(
-                Project(id=n["id"], name=n["name"], status_text=n.get("state"), url=n.get("url"))
+                Project(
+                    id=project_node["id"],
+                    name=project_node["name"],
+                    status_text=project_node.get("state"),
+                    url=project_node.get("url"),
+                )
             )
         return result
 
@@ -146,8 +168,8 @@ class LinearProvider:
         nodes = (data.get("users") or {}).get("nodes") or []
         if not nodes:
             return None
-        n = nodes[0]
-        return User(id=n["id"], email=n["email"], name=n["name"])
+        user_node = nodes[0]
+        return User(id=user_node["id"], email=user_node["email"], name=user_node["name"])
 
     def list_open_issues(self, project_id: str) -> list[Issue]:
         graphql = """
@@ -164,27 +186,11 @@ class LinearProvider:
         return [_to_issue(n) for n in nodes]
 
     def search_issues(self, query: str, *, project_id: str | None = None) -> list[Issue]:
-        modern = """
-        query($q: String!) {
-          searchIssues(term: $q, first: 20) {
-            nodes { identifier title state { id name }
-                    project { id name } }
-          }
-        }
-        """
         try:
-            data = self._query(modern, {"q": query})
+            data = self._query(_SEARCH_ISSUES_QUERY, {"q": query})
             nodes = (data.get("searchIssues") or {}).get("nodes") or []
         except ProviderError:
-            legacy = """
-            query($q: String!) {
-              issueSearch(query: $q, first: 20) {
-                nodes { identifier title state { id name }
-                        project { id name } }
-              }
-            }
-            """
-            data = self._query(legacy, {"q": query})
+            data = self._query(_ISSUE_SEARCH_LEGACY_QUERY, {"q": query})
             nodes = (data.get("issueSearch") or {}).get("nodes") or []
 
         issues = [_to_issue(n, with_project=True) for n in nodes]
@@ -231,7 +237,7 @@ class LinearProvider:
         return _to_issue(nodes[0], with_project=True, with_description=True)
 
     def update_issue(self, update: IssueUpdate) -> Issue:
-        # Resolve identifier (e.g. FAC-12) → UUID
+        """Resolves the identifier (e.g. FAC-12) to its UUID before mutating."""
         data = self._query(
             "query($q: String!) { issues(filter: {identifier: {eq: $q}}) { nodes { id } } }",
             {"q": update.issue_id},
@@ -239,7 +245,7 @@ class LinearProvider:
         nodes = (data.get("issues") or {}).get("nodes") or []
         if not nodes:
             raise ProviderError(f"Issue '{update.issue_id}' not found.")
-        uuid = nodes[0]["id"]
+        issue_uuid = nodes[0]["id"]
 
         issue_input: dict[str, Any] = {}
         if update.title is not None:
@@ -256,7 +262,7 @@ class LinearProvider:
         data = self._query(
             "mutation($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) "
             "{ success issue { id identifier url title state { id name } } } }",
-            {"id": uuid, "input": issue_input},
+            {"id": issue_uuid, "input": issue_input},
         )
         result = data.get("issueUpdate") or {}
         if not result.get("success"):

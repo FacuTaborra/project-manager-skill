@@ -6,19 +6,13 @@ import argparse
 
 from ..application.briefing import BriefingService
 from ..exceptions import EXIT_OK, CacheInvalid
-from ._helpers import (
-    briefing_to_dict,
-    build_context,
-    build_setup,
-    issues_by_state_to_dict,
-    prepare_read,
-    print_json,
-)
+from ._output import briefing_to_dict, issues_by_state_to_dict, print_json
+from ._wiring import build_cache_refresher, build_context, prepare_read
 
 
 def run(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    cache = build_setup(config, provider).verify().cache
+    cache = build_cache_refresher(config, provider).refresh().cache
 
     projects = cache.projects
     if not projects:
@@ -28,7 +22,7 @@ def run(args: argparse.Namespace) -> int:
     service = BriefingService(provider, context)
 
     if len(projects) > 1:
-        result = service.generate_multi(projects=list(projects), repo_name=config.repo_name)
+        result = service.generate_per_project(projects=list(projects), repo_name=config.repo_name)
         for section in result["projects"]:
             section["issues_by_state"] = issues_by_state_to_dict(section["issues_by_state"])
         print_json(result)

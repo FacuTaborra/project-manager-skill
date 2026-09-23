@@ -124,19 +124,19 @@ class TestCreateIssue:
 
     def test_an_explicit_in_scope_list_is_allowed(self) -> None:
         provider = FakeProvider()
-        _guard(provider).create_issue(title="T", description="D", list_id=IN_SCOPE)
+        _guard(provider).create_issue(title="T", description="D", project_id=IN_SCOPE)
         assert "create_issue" in provider.names()
 
     def test_a_list_outside_the_scope_is_refused(self) -> None:
         """The hole that used to let --project-id write to any board."""
         provider = FakeProvider()
         with pytest.raises(ScopeViolation, match="not in this repo's scope"):
-            _guard(provider).create_issue(title="T", description="D", list_id=OTHER)
+            _guard(provider).create_issue(title="T", description="D", project_id=OTHER)
         assert "create_issue" not in provider.names()
 
     def test_the_refusal_names_what_is_allowed(self) -> None:
         with pytest.raises(ScopeViolation, match="modulo-energia"):
-            _guard(FakeProvider()).create_issue(title="T", description="D", list_id=OTHER)
+            _guard(FakeProvider()).create_issue(title="T", description="D", project_id=OTHER)
 
     def test_several_lists_and_no_choice_asks_instead_of_guessing(self) -> None:
         provider = FakeProvider()
@@ -249,7 +249,7 @@ class TestDryRun:
         """A preview of a forbidden write is still a forbidden write."""
         with pytest.raises(ScopeViolation):
             _guard(FakeProvider(), dry_run=True).create_issue(
-                title="T", description="D", list_id=OTHER
+                title="T", description="D", project_id=OTHER
             )
 
     def test_update_preview_carries_the_id(self) -> None:
@@ -275,21 +275,21 @@ class TestStructuralChanges:
     def test_creating_a_list_is_off_by_default(self) -> None:
         provider = FakeProvider()
         with pytest.raises(ScopeViolation, match="--allow-structural-changes"):
-            _guard(provider).create_list("new-list")
+            _guard(provider).create_project("new-list")
         assert "create_project" not in provider.names()
 
     def test_creating_a_space_is_off_by_default(self) -> None:
         with pytest.raises(ScopeViolation, match="--allow-structural-changes"):
-            _guard(FakeProvider()).create_space("new-space")
+            _guard(FakeProvider()).create_team("new-space")
 
     def test_the_flag_enables_it(self) -> None:
         provider = FakeProvider()
-        _guard(provider, allow_structural=True).create_list("new-list")
+        _guard(provider, allow_structural_changes=True).create_project("new-list")
         assert dict(provider.calls)["create_project"] == ("new-list", "space-1")
 
     def test_it_lands_in_this_repos_space(self) -> None:
         provider = FakeProvider()
-        _guard(provider, allow_structural=True).create_list("x")
+        _guard(provider, allow_structural_changes=True).create_project("x")
         assert dict(provider.calls)["create_project"][1] == SCOPE.team_id
 
 
@@ -399,12 +399,12 @@ class TestBuildGuard:
     def test_repo_defaults_are_carried_into_the_guard(self) -> None:
         guard = build_guard(self._config(), FakeProvider(), CACHE, dry_run=True)
         assert guard.dry_run is True
-        assert guard.allow_structural is False
+        assert guard.allow_structural_changes is False
 
     def test_the_pin_can_be_skipped_when_already_checked(self) -> None:
         """prepare_write verifies it earlier, so the guard must not pay for it twice."""
         provider = FakeProvider(reachable=("ws-other",))
-        guard = build_guard(self._config(), provider, CACHE, verify_pin=False)
+        guard = build_guard(self._config(), provider, CACHE, check_workspace_pin=False)
         assert "reachable_workspace_ids" not in provider.names()
         assert guard.scope.workspace_id == "ws-1"
 

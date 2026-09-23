@@ -13,7 +13,9 @@ class BriefingService:
         self.provider = provider
         self.context = context
 
-    def generate_multi(self, *, projects: list[dict[str, str]], repo_name: str) -> dict[str, Any]:
+    def generate_per_project(
+        self, *, projects: list[dict[str, str]], repo_name: str
+    ) -> dict[str, Any]:
         excerpt = (
             self.context.get_status_excerpt(repo_name) if self.context.is_available() else None
         )

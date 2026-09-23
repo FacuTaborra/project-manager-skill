@@ -9,13 +9,15 @@ from __future__ import annotations
 import argparse
 
 from ..exceptions import EXIT_OK
-from ._helpers import prepare_write, print_result, read_text_arg
+from ._input import read_text_arg
+from ._output import print_write_outcome
+from ._wiring import prepare_write
 
 
 def run_create_doc(args: argparse.Namespace) -> int:
     _, _, guard = prepare_write(args)
 
-    print_result(
+    print_write_outcome(
         guard.create_doc(title=args.title, content=_content(args)),
         lambda doc: {
             "ok": True,
@@ -31,7 +33,7 @@ def run_create_doc(args: argparse.Namespace) -> int:
 def run_update_doc(args: argparse.Namespace) -> int:
     _, _, guard = prepare_write(args)
 
-    print_result(
+    print_write_outcome(
         guard.update_doc(
             doc_id=args.doc_id,
             title=args.title,

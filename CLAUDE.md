@@ -13,12 +13,12 @@ build si alguien lo rompe.
 
 De ahí cuelgan dos garantías que no se sostienen solas:
 
-- **Nada escribe fuera del scope declarado.** `_authorize()` es la única función que entrega un
-  list id escribible.
+- **Nada escribe fuera del scope declarado.** `_authorized_project_id()` es la única función que
+  entrega un project id escribible.
 - **`--dry-run` es total, no "casi".** No hay un segundo camino a la API que se pueda olvidar.
 
 Si vas a agregar una operación que escribe: el método nuevo va en `ScopeGuard`, llama a
-`_authorize()` primero, y el comando la invoca por `guard.<lo-que-sea>(...)`. Nunca
+`_authorized_project_id()` primero, y el comando la invoca por `guard.<lo-que-sea>(...)`. Nunca
 `provider.<lo-que-sea>(...)` desde un comando.
 
 ## Arquitectura
@@ -26,7 +26,7 @@ Si vas a agregar una operación que escribe: el método nuevo va en `ScopeGuard`
 ```
 cli.py                    argparse; los flags compartidos vienen de parsers padre
   └─ commands/            I/O y serialización JSON, nada de lógica
-      └─ application/     servicios: scope (el guard), setup_flow, briefing, search, init_flow
+      └─ application/     servicios: scope (el guard), cache_refresh, briefing, search, scope_discovery
           └─ domain/      ports.py (Protocols) + models.py (dataclasses frozen)
               ← infrastructure/providers/{linear,clickup}.py
 ```
@@ -34,7 +34,7 @@ cli.py                    argparse; los flags compartidos vienen de parsers padr
 Dependencias runtime: **cero**. Solo stdlib, y así queda. Si algo parece necesitar un paquete,
 casi siempre son 40 líneas a mano con mejores mensajes de error.
 
-`commands/_helpers.py` tiene los dos composition roots: `prepare_read()` (sin guard, sin costo de
+`commands/_wiring.py` tiene los dos composition roots: `prepare_read()` (sin guard, sin costo de
 verificación) y `prepare_write()` (con guard, valida el pin de workspace).
 
 ## Configuración
@@ -73,9 +73,9 @@ En ClickUp las tags no tienen ID propio: la identidad es el nombre, así que `La
 Sigue la convención que el adapter ya usaba para los estados, y hace que la resolución de labels
 compartida funcione sin cambios. No renombres `IssueDraft.label_ids`.
 
-`_workspace()` **nunca** descubre. Recibe el workspace pinneado por constructor y falla si no lo
-tiene. Antes devolvía `teams[0]`, o sea que el tablero donde escribías dependía del orden en que
-ClickUp devolviera la respuesta.
+`_require_workspace_id()` **nunca** descubre. Recibe el workspace pinneado por constructor y falla
+si no lo tiene. Antes devolvía `teams[0]`, o sea que el tablero donde escribías dependía del orden
+en que ClickUp devolviera la respuesta.
 
 ## Estilo
 

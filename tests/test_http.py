@@ -14,9 +14,7 @@ from src.claude_pm.infrastructure.providers._http import HttpClient
 
 
 def _make_client() -> HttpClient:
-    return HttpClient(
-        url="https://example.com/api", headers={"Authorization": "test"}, max_retries=1
-    )
+    return HttpClient(headers={"Authorization": "test"}, max_retries=1)
 
 
 def _mock_response(data: dict, status: int = 200) -> MagicMock:
@@ -104,7 +102,7 @@ class TestPostJson:
     def test_post_returns_dict(self) -> None:
         client = _make_client()
         with patch("urllib.request.urlopen", return_value=_mock_response({"id": "123"})):
-            result = client.post_json({"title": "Test"})
+            result = client.post_json("https://example.com/api", {"title": "Test"})
         assert result == {"id": "123"}
 
     def test_post_non_dict_response_raises(self) -> None:
@@ -117,4 +115,4 @@ class TestPostJson:
             patch("urllib.request.urlopen", return_value=resp),
             pytest.raises(ProviderError, match="Unexpected response shape"),
         ):
-            client.post_json({"title": "Test"})
+            client.post_json("https://example.com/api", {"title": "Test"})

@@ -15,16 +15,16 @@ class HttpClient:
     """Minimal HTTP client built on urllib. Stateless, one per adapter.
 
     Supports GET, POST, PUT, PATCH JSON. Single retry on transient errors (timeouts, 5xx).
+    Every method takes its url explicitly — there is no default endpoint to
+    silently fall back to.
     """
 
     def __init__(
         self,
-        url: str,
         headers: dict[str, str],
         timeout: int = 30,
         max_retries: int = 1,
     ) -> None:
-        self.url = url
         self.headers = headers
         self.timeout = timeout
         self.max_retries = max_retries
@@ -46,10 +46,10 @@ class HttpClient:
             raise ProviderError(f"Unexpected response shape: {type(result).__name__}")
         return result
 
-    def post_json(self, payload: dict[str, Any], url: str | None = None) -> dict[str, Any]:
+    def post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            url or self.url,
+            url,
             data=body,
             headers={**self.headers, "Content-Type": "application/json; charset=utf-8"},
             method="POST",

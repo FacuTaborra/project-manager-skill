@@ -12,25 +12,29 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-from ..application.onboarding import SKILL_DIR, next_step
+from ..application.onboarding import SKILL_DIR, SKILL_FILE, next_step
 from ..exceptions import EXIT_OK, PMError
-from ..infrastructure.permissions import missing_permissions, register_permissions, settings_path
-from ._helpers import print_json
-
-SKILL_TARGET = SKILL_DIR / "SKILL.md"
+from ..infrastructure.permissions import (
+    missing_permissions as list_missing_permissions,
+)
+from ..infrastructure.permissions import (
+    register_permissions,
+    settings_path,
+)
+from ._output import print_json
 
 
 def run(args: argparse.Namespace) -> int:
-    content = _skill_markdown()
-    pending = missing_permissions()
+    skill_markdown = _skill_markdown()
+    missing_permissions = list_missing_permissions()
     junction = _junction_target()
 
     if args.dry_run:
         print_json(
             {
                 "dry_run": True,
-                "would_write": str(SKILL_TARGET),
-                "would_add_permissions": pending,
+                "would_write": str(SKILL_FILE),
+                "would_add_permissions": missing_permissions,
                 "settings": str(settings_path()),
                 "legacy_junction": str(junction) if junction else None,
             }
@@ -50,15 +54,15 @@ def run(args: argparse.Namespace) -> int:
             f"here, your checkout."
         )
 
-    if pending and not args.yes and not args.skip_permissions:
+    if missing_permissions and not args.yes and not args.skip_permissions:
         raise PMError(
             f"This would widen what Claude Code may run without asking, by adding "
-            f"{', '.join(pending)} to {settings_path()}.\n"
+            f"{', '.join(missing_permissions)} to {settings_path()}.\n"
             f"Re-run with --yes to accept, or --skip-permissions to install only SKILL.md."
         )
 
     SKILL_DIR.mkdir(parents=True, exist_ok=True)
-    SKILL_TARGET.write_text(content, encoding="utf-8")
+    SKILL_FILE.write_text(skill_markdown, encoding="utf-8")
 
     added: list[str] = []
     still_missing: list[str] = []
@@ -67,7 +71,7 @@ def run(args: argparse.Namespace) -> int:
 
     payload: dict[str, object] = {
         "ok": True,
-        "installed": str(SKILL_TARGET),
+        "installed": str(SKILL_FILE),
         "permissions_added": added,
     }
     if still_missing:

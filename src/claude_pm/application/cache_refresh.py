@@ -1,4 +1,4 @@
-"""SetupService — verify the declared scope against the tracker and cache its ids.
+"""CacheRefreshService — verify the declared scope against the tracker and cache its ids.
 
 Discovery is gone. `.pm.toml` already holds the ids, so this no longer guesses
 which board a repo belongs to; it confirms that the declared board still exists
@@ -16,13 +16,13 @@ from .repo_context import RepoContext
 
 
 @dataclass
-class SetupResult:
+class CacheRefreshResult:
     cache: Cache
     warnings: list[str] = field(default_factory=list)
     refreshed: bool = False
 
 
-class SetupService:
+class CacheRefreshService:
     def __init__(
         self, provider: IssueProvider, cache_repo: CacheRepository, config: RepoContext
     ) -> None:
@@ -30,10 +30,10 @@ class SetupService:
         self.cache_repo = cache_repo
         self.config = config
 
-    def verify(self, *, force: bool = False) -> SetupResult:
+    def refresh(self, *, force: bool = False) -> CacheRefreshResult:
         cache = self.cache_repo.load()
         if not force and cache.is_valid_for(self.config.fingerprint):
-            return SetupResult(cache=cache)
+            return CacheRefreshResult(cache=cache)
 
         scope = self.config.scope
         warnings: list[str] = []
@@ -76,10 +76,10 @@ class SetupService:
         ]
 
         written = self.cache_repo.write(
-            space_id=space.id,
-            space_name=space.name,
-            lists=resolved,
-            state_ids=states,
+            team_id=space.id,
+            team_name=space.name,
+            projects=resolved,
+            state_id_by_name=states,
             labels=labels,
         )
-        return SetupResult(cache=written, warnings=warnings, refreshed=True)
+        return CacheRefreshResult(cache=written, warnings=warnings, refreshed=True)

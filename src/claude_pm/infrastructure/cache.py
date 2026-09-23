@@ -76,10 +76,10 @@ class CacheRepository(Protocol):
     def write(
         self,
         *,
-        space_id: str,
-        space_name: str,
-        lists: list[dict[str, str]],
-        state_ids: dict[str, str],
+        team_id: str,
+        team_name: str,
+        projects: list[dict[str, str]],
+        state_id_by_name: dict[str, str],
         labels: list[dict[str, str]] | None = None,
     ) -> Cache: ...
 
@@ -103,20 +103,20 @@ class JsonFileCacheRepository:
     def write(
         self,
         *,
-        space_id: str,
-        space_name: str,
-        lists: list[dict[str, str]],
-        state_ids: dict[str, str],
+        team_id: str,
+        team_name: str,
+        projects: list[dict[str, str]],
+        state_id_by_name: dict[str, str],
         labels: list[dict[str, str]] | None = None,
     ) -> Cache:
         now = datetime.now(UTC).isoformat()
         data: dict[str, Any] = {
             "version": CACHE_VERSION,
             "fingerprint": self.fingerprint,
-            "space_id": space_id,
-            "space_name": space_name,
-            "lists": lists,
-            "state_ids": state_ids,
+            "space_id": team_id,
+            "space_name": team_name,
+            "lists": projects,
+            "state_ids": state_id_by_name,
             "labels": labels or [],
             "last_refresh": now,
         }

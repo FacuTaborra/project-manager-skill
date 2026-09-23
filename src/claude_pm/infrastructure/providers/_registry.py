@@ -10,7 +10,7 @@ See CONTRIBUTING.md for details.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Protocol
 
 from ...domain.binding import ProviderType
 from ...domain.ports import IssueProvider
@@ -18,18 +18,31 @@ from ...exceptions import ConfigError
 from .clickup import ClickUpProvider
 from .linear import LinearProvider
 
-PROVIDERS: dict[ProviderType, type[IssueProvider]] = {
+
+class ProviderFactory(Protocol):
+    """The constructor shape every adapter must accept.
+
+    `IssueProvider` is a Protocol and carries no constructor, so `type[IssueProvider]`
+    would leave the call below unchecked. Adapter classes satisfy this structurally.
+    """
+
+    def __call__(self, token: str, *, workspace_id: str | None = None) -> IssueProvider: ...
+
+
+PROVIDERS: dict[ProviderType, ProviderFactory] = {
     ProviderType.LINEAR: LinearProvider,
     ProviderType.CLICKUP: ClickUpProvider,
 }
 
 
-def get_provider(name: ProviderType, **kwargs: Any) -> IssueProvider:
-    """Instantiate a provider by name. kwargs are forwarded to its constructor."""
-    if name not in PROVIDERS:
+def create_provider(
+    provider_type: ProviderType, *, token: str, workspace_id: str | None = None
+) -> IssueProvider:
+    """Instantiate a provider by type, pinned to a token and (optionally) a workspace."""
+    if provider_type not in PROVIDERS:
         available = ", ".join(p.value for p in PROVIDERS) or "(none)"
         raise ConfigError(
-            f"Unknown provider '{name}'. Available: {available}. "
+            f"Unknown provider '{provider_type}'. Available: {available}. "
             f"See CONTRIBUTING.md to add a new provider."
         )
-    return PROVIDERS[name](**kwargs)
+    return PROVIDERS[provider_type](token=token, workspace_id=workspace_id)

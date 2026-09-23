@@ -12,7 +12,7 @@ class SearchService:
     def __init__(self, provider: IssueProvider) -> None:
         self.provider = provider
 
-    def find_duplicates(
+    def search_projects(
         self, query: str, *, project_ids: Sequence[str] | None = None
     ) -> list[Issue]:
         """Search every list in scope, not just the first.

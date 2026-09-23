@@ -81,10 +81,10 @@ class TestJsonFileRepository:
     def test_round_trip(self, tmp_path: Path) -> None:
         repo = JsonFileCacheRepository(tmp_path / "c.json", FINGERPRINT)
         written = repo.write(
-            space_id="90130521234",
-            space_name="4plus",
-            lists=LISTS,
-            state_ids=STATES,
+            team_id="90130521234",
+            team_name="4plus",
+            projects=LISTS,
+            state_id_by_name=STATES,
             labels=LABELS,
         )
         assert written.team_id == "90130521234"
@@ -121,21 +121,21 @@ class TestJsonFileRepository:
     def test_a_foreign_fingerprint_is_ignored(self, tmp_path: Path) -> None:
         path = tmp_path / "c.json"
         JsonFileCacheRepository(path, "other-fp").write(
-            space_id="s", space_name="n", lists=LISTS, state_ids=STATES
+            team_id="s", team_name="n", projects=LISTS, state_id_by_name=STATES
         )
         assert JsonFileCacheRepository(path, FINGERPRINT).load() == Cache()
 
     def test_creates_missing_directories(self, tmp_path: Path) -> None:
         path = tmp_path / "deep" / "deeper" / "c.json"
         JsonFileCacheRepository(path, FINGERPRINT).write(
-            space_id="s", space_name="n", lists=LISTS, state_ids=STATES
+            team_id="s", team_name="n", projects=LISTS, state_id_by_name=STATES
         )
         assert path.is_file()
 
     def test_writes_the_current_version(self, tmp_path: Path) -> None:
         path = tmp_path / "c.json"
         JsonFileCacheRepository(path, FINGERPRINT).write(
-            space_id="s", space_name="n", lists=LISTS, state_ids=STATES
+            team_id="s", team_name="n", projects=LISTS, state_id_by_name=STATES
         )
         assert json.loads(path.read_text(encoding="utf-8"))["version"] == CACHE_VERSION
 
@@ -165,7 +165,9 @@ class TestInMemoryRepository:
 
     def test_write_then_load(self) -> None:
         repo = InMemoryCacheRepository()
-        repo.write(space_id="s", space_name="n", lists=LISTS, state_ids=STATES, labels=LABELS)
+        repo.write(
+            team_id="s", team_name="n", projects=LISTS, state_id_by_name=STATES, labels=LABELS
+        )
         loaded = repo.load()
         assert loaded.team_id == "s"
         assert loaded.labels == tuple(LABELS)

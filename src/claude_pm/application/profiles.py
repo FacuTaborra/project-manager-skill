@@ -25,7 +25,7 @@ from ..infrastructure.config_files.credentials_store import (
     list_profiles,
     write_profiles,
 )
-from ..infrastructure.providers._registry import get_provider
+from ..infrastructure.providers._registry import create_provider
 
 _PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _ENV_TOKEN = "PM_TOKEN"
@@ -37,20 +37,20 @@ _SETUP_HINT = (
 )
 
 
-def verify_token(provider: ProviderType, token: str) -> tuple[str, list[Workspace]]:
+def authenticate_token(provider: ProviderType, token: str) -> tuple[str, list[Workspace]]:
     """Prove the token works before it is written anywhere.
 
     A mistyped token fails here, next to the paste that caused it, instead of
     three commands later where the error no longer looks like its cause.
     """
-    probe = get_provider(provider, token=token)
+    probe = create_provider(provider, token=token)
     try:
         return probe.viewer_email(), probe.list_workspaces()
     except ProviderError as exc:
         raise PMError(f"That token does not work: {exc}") from exc
 
 
-def pick_workspace(declared: str | None, reachable: list[Workspace]) -> str | None:
+def pick_workspace_id(declared: str | None, reachable: list[Workspace]) -> str | None:
     """Pin the profile only when there is no doubt; `pm init` asks otherwise."""
     if declared:
         if not any(w.id == declared for w in reachable):
@@ -61,8 +61,8 @@ def pick_workspace(declared: str | None, reachable: list[Workspace]) -> str | No
 
 
 def infer_provider(
-    provider: str | None,
-    profile: str | None,
+    provider_arg: str | None,
+    profile_name: str | None,
     legacy_provider: str | None,
 ) -> ProviderType:
     """Work out the provider without making the user state the obvious.
@@ -71,16 +71,16 @@ def infer_provider(
     only profiles of one kind — settles it. Only a genuine ambiguity is worth
     asking about, and then it is exit 2 like every other choice, not a dead end.
     """
-    raw = provider or legacy_provider
+    raw = provider_arg or legacy_provider
     if raw is not None:
         return ProviderType.parse(raw)
 
     profiles = list_profiles()
-    if profile:
-        named = next((p for p in profiles if p.name == profile), None)
+    if profile_name:
+        named = next((p for p in profiles if p.name == profile_name), None)
         if named is None:
             available = ", ".join(p.name for p in profiles) or "(none)"
-            raise PMError(f"Profile {profile!r} not found. Available: {available}.")
+            raise PMError(f"Profile {profile_name!r} not found. Available: {available}.")
         return named.provider_type
 
     providers = {p.provider_type for p in profiles}

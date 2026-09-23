@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.commands import _helpers, init
+from src.claude_pm.commands import _input, init
 from src.claude_pm.exceptions import NeedsChoice, PMError
 
 
@@ -35,10 +35,10 @@ def _args(**overrides: object) -> argparse.Namespace:
 
 class TestMachineProtocolUnchanged:
     def test_no_input_never_prompts_even_on_a_tty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
+        monkeypatch.setattr(_input, "is_interactive", lambda: True)
         monkeypatch.setattr(
             init,
-            "_run_once",
+            "_write_pm_file",
             lambda _a: (_ for _ in ()).throw(NeedsChoice("pick", {"action": "x"})),
         )
         monkeypatch.setattr("builtins.input", lambda _: pytest.fail("prompted despite --no-input"))
@@ -49,9 +49,9 @@ class TestMachineProtocolUnchanged:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         payload = {"action": "choose-workspace", "workspaces": [{"id": "w1", "name": "One"}]}
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: False)
+        monkeypatch.setattr(_input, "is_interactive", lambda: False)
         monkeypatch.setattr(
-            init, "_run_once", lambda _a: (_ for _ in ()).throw(NeedsChoice("pick", payload))
+            init, "_write_pm_file", lambda _a: (_ for _ in ()).throw(NeedsChoice("pick", payload))
         )
         with pytest.raises(NeedsChoice) as excinfo:
             init.run(_args())
@@ -77,15 +77,15 @@ class TestWizardLoop:
         ]
         seen: list[argparse.Namespace] = []
 
-        def fake_run_once(args: argparse.Namespace) -> int:
+        def fake_write_pm_file(args: argparse.Namespace) -> int:
             seen.append(args)
             if payloads:
                 raise NeedsChoice("pick", payloads.pop(0))
             return 0
 
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
+        monkeypatch.setattr(_input, "is_interactive", lambda: True)
         monkeypatch.setattr(init, "list_profiles", lambda: [object()])
-        monkeypatch.setattr(init, "_run_once", fake_run_once)
+        monkeypatch.setattr(init, "_write_pm_file", fake_write_pm_file)
         self._answers(monkeypatch, ["2", "1,2"])
 
         args = _args()
@@ -130,16 +130,16 @@ class TestFirstCredential:
         """Sending someone to another command mid-flow is the friction we removed."""
         called: dict[str, object] = {}
 
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
+        monkeypatch.setattr(_input, "is_interactive", lambda: True)
         monkeypatch.setattr(init, "list_profiles", lambda: [])
-        monkeypatch.setattr(init, "_run_once", lambda _a: 0)
+        monkeypatch.setattr(init, "_write_pm_file", lambda _a: 0)
         monkeypatch.setattr(init, "ask_secret", lambda _q: "pk_typed_by_hand")
         monkeypatch.setattr(init, "ask", lambda _q, default=None: "urbs")
         monkeypatch.setattr(init, "ask_provider", lambda: init.ProviderType.CLICKUP)
         monkeypatch.setattr(
-            init, "verify_token", lambda p, t: ("dev@example.com", [_team("w1", "One")])
+            init, "authenticate_token", lambda p, t: ("dev@example.com", [_team("w1", "One")])
         )
-        monkeypatch.setattr(init, "report", lambda *a: None)
+        monkeypatch.setattr(init, "print_profile_saved", lambda *a: None)
         monkeypatch.setattr(
             init,
             "save_profile",

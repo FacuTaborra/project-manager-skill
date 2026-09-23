@@ -6,14 +6,15 @@ import argparse
 
 from ..application.repo_context import RepoContext
 from ..exceptions import EXIT_OK
-from ._helpers import build_provider, build_setup, print_json
+from ._output import print_json
+from ._wiring import build_cache_refresher, build_provider
 
 
 def run(args: argparse.Namespace) -> int:
     config = RepoContext.load(args.repo_name, profile_override=args.profile)
     provider = build_provider(config)
 
-    result = build_setup(config, provider).verify(force=args.force)
+    result = build_cache_refresher(config, provider).refresh(force=args.force)
     cache = result.cache
 
     print_json(

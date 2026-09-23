@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.application.init_flow import (
-    build_scope,
+from src.claude_pm.application.scope_discovery import (
     defaults_from_legacy,
+    discover_scope,
     read_legacy_section,
-    resolve_lists,
-    resolve_space,
+    resolve_projects,
+    resolve_team,
     resolve_workspace,
 )
 from src.claude_pm.domain.binding import IssueDefaults, ScopeProject, WriteScope
@@ -112,51 +112,51 @@ class TestResolution:
             resolve_workspace(FakeProvider(), "ws-other")
 
     def test_space_by_legacy_name(self) -> None:
-        assert resolve_space(FakeProvider(), space_id=None, space_name="4plus") == (
+        assert resolve_team(FakeProvider(), team_id=None, team_name="4plus") == (
             "space-1",
             "4plus",
         )
 
     def test_space_by_name_is_case_insensitive(self) -> None:
-        assert resolve_space(FakeProvider(), space_id=None, space_name="4PLUS")[0] == "space-1"
+        assert resolve_team(FakeProvider(), team_id=None, team_name="4PLUS")[0] == "space-1"
 
     def test_unknown_space_name_lists_the_options(self) -> None:
         with pytest.raises(PMError, match="4plus"):
-            resolve_space(FakeProvider(), space_id=None, space_name="ghost")
+            resolve_team(FakeProvider(), team_id=None, team_name="ghost")
 
     def test_several_spaces_and_no_hint_asks(self) -> None:
         provider = FakeProvider(
             spaces=[Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
         )
         with pytest.raises(NeedsChoice) as excinfo:
-            resolve_space(provider, space_id=None, space_name=None)
+            resolve_team(provider, team_id=None, team_name=None)
         assert excinfo.value.payload["action"] == "choose-space"
 
     def test_lists_by_legacy_names(self) -> None:
-        refs = resolve_lists(FakeProvider(), "space-1", list_names=["modulo-energia"])
+        refs = resolve_projects(FakeProvider(), "space-1", project_names=["modulo-energia"])
         assert refs == (ScopeProject(id="list-1", name="modulo-energia"),)
 
     def test_lists_by_id(self) -> None:
-        refs = resolve_lists(FakeProvider(), "space-1", list_ids=["list-1"])
+        refs = resolve_projects(FakeProvider(), "space-1", project_ids=["list-1"])
         assert refs == (ScopeProject(id="list-1", name="modulo-energia"),)
 
     def test_unknown_list_id_is_refused(self) -> None:
         with pytest.raises(PMError, match="not found in this space"):
-            resolve_lists(FakeProvider(), "space-1", list_ids=["ghost"])
+            resolve_projects(FakeProvider(), "space-1", project_ids=["ghost"])
 
     def test_no_hint_asks_rather_than_picking(self) -> None:
         with pytest.raises(NeedsChoice) as excinfo:
-            resolve_lists(FakeProvider(), "space-1")
+            resolve_projects(FakeProvider(), "space-1")
         assert excinfo.value.payload["action"] == "choose-list"
 
 
-class TestBuildScope:
+class TestDiscoverScope:
     def test_end_to_end_from_legacy_names(self) -> None:
-        scope = build_scope(
+        scope = discover_scope(
             lambda _workspace_id: FakeProvider(),
             workspace_id=None,
-            space_name="4plus",
-            list_names=["modulo-energia"],
+            team_name="4plus",
+            project_names=["modulo-energia"],
         )
         assert scope.workspace_id == "ws-1"
         assert scope.team_id == "space-1"
@@ -171,8 +171,8 @@ class TestBuildScope:
             pins.append(workspace_id)
             return FakeProvider()
 
-        build_scope(
-            make_provider, workspace_id=None, space_name="4plus", list_names=["modulo-energia"]
+        discover_scope(
+            make_provider, workspace_id=None, team_name="4plus", project_names=["modulo-energia"]
         )
         assert pins == [None, "ws-1"]
 

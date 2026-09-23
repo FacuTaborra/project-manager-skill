@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 
 from ..exceptions import EXIT_OK
-from ._helpers import issue_to_dict, prepare_read, print_json
+from ._output import issue_to_dict, print_json
+from ._wiring import prepare_read
 
 
 def run(args: argparse.Namespace) -> int:

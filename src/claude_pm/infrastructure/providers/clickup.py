@@ -32,7 +32,7 @@ CLICKUP_API_BASE = "https://api.clickup.com/api/v2"
 CLICKUP_API_V3_BASE = "https://api.clickup.com/api/v3"
 
 # ClickUp task statuses that are considered "done" — excluded from briefing
-_DONE_TYPES = {"done", "closed"}
+_CLOSED_STATUS_TYPES = {"done", "closed"}
 
 
 class ClickUpProvider:
@@ -49,10 +49,7 @@ class ClickUpProvider:
         workspace_id: str | None = None,
         http: HttpClient | None = None,
     ) -> None:
-        self._http = http or HttpClient(
-            url=CLICKUP_API_BASE,
-            headers={"Authorization": token},
-        )
+        self._http = http or HttpClient(headers={"Authorization": token})
         # Pinned from config, never discovered. Picking `teams[0]` meant the board
         # you wrote to depended on the order ClickUp happened to return.
         self._workspace_id = workspace_id
@@ -63,18 +60,18 @@ class ClickUpProvider:
         return self._http.get_json(f"{CLICKUP_API_BASE}/{path}")
 
     def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        result = self._http.post_json(body, url=f"{CLICKUP_API_BASE}/{path}")
+        result = self._http.post_json(f"{CLICKUP_API_BASE}/{path}", body)
         if not isinstance(result, dict):
             raise ProviderError(f"Unexpected ClickUp response: {type(result).__name__}")
         return result
 
     def _post_v3(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        result = self._http.post_json(body, url=f"{CLICKUP_API_V3_BASE}/{path}")
+        result = self._http.post_json(f"{CLICKUP_API_V3_BASE}/{path}", body)
         if not isinstance(result, dict):
             raise ProviderError(f"Unexpected ClickUp v3 response: {type(result).__name__}")
         return result
 
-    def _workspace(self) -> str:
+    def _require_workspace_id(self) -> str:
         if not self._workspace_id:
             raise ProviderError(
                 "No ClickUp workspace pinned. Run `pm init` in this repo so .pm.toml "
@@ -101,7 +98,7 @@ class ClickUpProvider:
         return email
 
     def list_teams(self) -> list[Team]:
-        workspace_id = self._workspace()
+        workspace_id = self._require_workspace_id()
         data = self._get(f"team/{workspace_id}/space?archived=false")
         spaces = data.get("spaces") or []
         return [Team(id=s["id"], name=s["name"], key=s["id"][:8]) for s in spaces]
@@ -109,7 +106,7 @@ class ClickUpProvider:
     def list_projects(self, team_id: str | None = None) -> list[Project]:
         if team_id:
             return self._lists_in_space(team_id)
-        workspace_id = self._workspace()
+        workspace_id = self._require_workspace_id()
         data = self._get(f"team/{workspace_id}/space?archived=false")
         spaces = data.get("spaces") or []
         result: list[Project] = []
@@ -121,13 +118,13 @@ class ClickUpProvider:
         lists: list[Project] = []
         # Folderless lists
         data = self._get(f"space/{space_id}/list?archived=false")
-        for lst in data.get("lists") or []:
-            lists.append(Project(id=lst["id"], name=lst["name"]))
+        for list_json in data.get("lists") or []:
+            lists.append(Project(id=list_json["id"], name=list_json["name"]))
         # Lists inside folders
         folders = self._get(f"space/{space_id}/folder?archived=false").get("folders") or []
         for folder in folders:
-            for lst in folder.get("lists") or []:
-                lists.append(Project(id=lst["id"], name=lst["name"]))
+            for list_json in folder.get("lists") or []:
+                lists.append(Project(id=list_json["id"], name=list_json["name"]))
         return lists
 
     def create_project(self, name: str, team_id: str) -> Project:
@@ -153,14 +150,14 @@ class ClickUpProvider:
         return [Label(id=t["name"], name=t["name"]) for t in data.get("tags") or []]
 
     def resolve_user_by_email(self, email: str) -> User | None:
-        workspace_id = self._workspace()
+        workspace_id = self._require_workspace_id()
         data = self._get("team")
-        teams = data.get("teams") or []
-        for team in teams:
-            if str(team.get("id")) != workspace_id:
+        workspaces = data.get("teams") or []
+        for workspace in workspaces:
+            if str(workspace.get("id")) != workspace_id:
                 continue
-            for m in team.get("members") or []:
-                user = m.get("user") or {}
+            for member in workspace.get("members") or []:
+                user = member.get("user") or {}
                 if user.get("email") == email:
                     return User(
                         id=str(user["id"]),
@@ -175,7 +172,7 @@ class ClickUpProvider:
         return [_to_issue(t) for t in tasks if not _is_done(t)]
 
     def search_issues(self, query: str, *, project_id: str | None = None) -> list[Issue]:
-        workspace_id = self._workspace()
+        workspace_id = self._require_workspace_id()
         path = f"team/{workspace_id}/task?query={quote(query, safe='')}"
         if project_id:
             path += f"&list_ids[]={quote(project_id, safe='')}"
@@ -228,7 +225,7 @@ class ClickUpProvider:
         raise ProviderError("ClickUp does not support creating Spaces via API. Use the ClickUp UI.")
 
     def create_doc(self, title: str, content: str | None = None) -> Doc:
-        workspace_id = self._workspace()
+        workspace_id = self._require_workspace_id()
         payload: dict[str, Any] = {
             "title": title,
             "parent": {"id": workspace_id, "type": 4},
@@ -250,7 +247,7 @@ class ClickUpProvider:
         content: str | None = None,
         page_id: str | None = None,
     ) -> Doc:
-        workspace_id = self._workspace()
+        workspace_id = self._require_workspace_id()
         doc_data: dict[str, Any] = {"id": doc_id, "title": ""}
         if title:
             doc_data = self._http.put_json(
@@ -282,7 +279,7 @@ def _member_id(raw: str) -> int:
 
 def _is_done(task: dict[str, Any]) -> bool:
     status = task.get("status") or {}
-    return (status.get("type") or "").lower() in _DONE_TYPES
+    return (status.get("type") or "").lower() in _CLOSED_STATUS_TYPES
 
 
 def _to_issue(

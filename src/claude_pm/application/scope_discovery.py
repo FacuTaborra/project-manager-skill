@@ -78,61 +78,61 @@ def resolve_workspace(provider: IssueProvider, declared: str | None) -> tuple[st
     )
 
 
-def resolve_space(
-    provider: IssueProvider, *, space_id: str | None, space_name: str | None
+def resolve_team(
+    provider: IssueProvider, *, team_id: str | None, team_name: str | None
 ) -> tuple[str, str]:
-    """Resolve a space by id, else by name (the legacy path), else ask."""
-    spaces = provider.list_teams()
-    if not spaces:
+    """Resolve a team by id, else by name (the legacy path), else ask."""
+    teams = provider.list_teams()
+    if not teams:
         raise PMError("This workspace has no spaces/teams.")
 
-    if space_id:
-        match = next((s for s in spaces if s.id == space_id), None)
+    if team_id:
+        match = next((t for t in teams if t.id == team_id), None)
         if match is None:
-            raise PMError(f"Space {space_id} not found. {_options(spaces)}")
+            raise PMError(f"Space {team_id} not found. {_options(teams)}")
         return match.id, match.name
 
-    if space_name:
-        matches = [s for s in spaces if s.name.lower() == space_name.lower()]
+    if team_name:
+        matches = [t for t in teams if t.name.lower() == team_name.lower()]
         if not matches:
-            raise PMError(f"Space {space_name!r} not found. {_options(spaces)}")
+            raise PMError(f"Space {team_name!r} not found. {_options(teams)}")
         return matches[0].id, matches[0].name
 
-    if len(spaces) == 1:
-        return spaces[0].id, spaces[0].name
+    if len(teams) == 1:
+        return teams[0].id, teams[0].name
 
     raise NeedsChoice(
         "Several spaces exist. Re-run with --space-id <ID>.",
-        {"action": "choose-space", "spaces": [{"id": s.id, "name": s.name} for s in spaces]},
+        {"action": "choose-space", "spaces": [{"id": t.id, "name": t.name} for t in teams]},
     )
 
 
-def resolve_lists(
+def resolve_projects(
     provider: IssueProvider,
-    space_id: str,
+    team_id: str,
     *,
-    list_ids: list[str] | None = None,
-    list_names: list[str] | None = None,
+    project_ids: list[str] | None = None,
+    project_names: list[str] | None = None,
 ) -> tuple[ScopeProject, ...]:
     """Resolve the writable destinations by id, else by name, else ask."""
-    projects = provider.list_projects(space_id)
+    projects = provider.list_projects(team_id)
     if not projects:
-        raise PMError(f"Space {space_id} has no lists to write to.")
+        raise PMError(f"Space {team_id} has no lists to write to.")
 
-    if list_ids:
+    if project_ids:
         by_id = {p.id: p for p in projects}
         refs = []
-        for wanted in list_ids:
+        for wanted in project_ids:
             project = by_id.get(wanted)
             if project is None:
                 raise PMError(f"List {wanted} not found in this space. {_options(projects)}")
             refs.append(ScopeProject(id=project.id, name=project.name))
         return tuple(refs)
 
-    if list_names:
+    if project_names:
         by_name = {p.name.lower(): p for p in projects}
         refs = []
-        for wanted in list_names:
+        for wanted in project_names:
             project = by_name.get(wanted.lower())
             if project is None:
                 raise PMError(f"List {wanted!r} not found in this space. {_options(projects)}")
@@ -148,14 +148,14 @@ def resolve_lists(
     )
 
 
-def build_scope(
+def discover_scope(
     make_provider: Callable[[str | None], IssueProvider],
     *,
     workspace_id: str | None,
-    space_id: str | None = None,
-    space_name: str | None = None,
-    list_ids: list[str] | None = None,
-    list_names: list[str] | None = None,
+    team_id: str | None = None,
+    team_name: str | None = None,
+    project_ids: list[str] | None = None,
+    project_names: list[str] | None = None,
 ) -> WriteScope:
     """Resolve a full scope, pinning the provider as soon as the workspace is known.
 
@@ -166,15 +166,17 @@ def build_scope(
     resolved_workspace, workspace_name = resolve_workspace(make_provider(None), workspace_id)
 
     provider = make_provider(resolved_workspace)
-    resolved_space, resolved_space_name = resolve_space(
-        provider, space_id=space_id, space_name=space_name
+    resolved_team_id, resolved_team_name = resolve_team(
+        provider, team_id=team_id, team_name=team_name
     )
-    projects = resolve_lists(provider, resolved_space, list_ids=list_ids, list_names=list_names)
+    projects = resolve_projects(
+        provider, resolved_team_id, project_ids=project_ids, project_names=project_names
+    )
     return WriteScope(
         workspace_id=resolved_workspace,
         workspace_name=workspace_name,
-        team_id=resolved_space,
-        team_name=resolved_space_name,
+        team_id=resolved_team_id,
+        team_name=resolved_team_name,
         projects=projects,
     )
 

@@ -19,18 +19,18 @@ class InMemoryCacheRepository:
     def write(
         self,
         *,
-        space_id: str,
-        space_name: str,
-        lists: list[dict[str, str]],
-        state_ids: dict[str, str],
+        team_id: str,
+        team_name: str,
+        projects: list[dict[str, str]],
+        state_id_by_name: dict[str, str],
         labels: list[dict[str, str]] | None = None,
     ) -> Cache:
         self._cache = Cache(
             fingerprint=self._cache.fingerprint,
-            team_id=space_id,
-            team_name=space_name,
-            projects=tuple(lists),
-            state_id_by_name=state_ids,
+            team_id=team_id,
+            team_name=team_name,
+            projects=tuple(projects),
+            state_id_by_name=state_id_by_name,
             labels=tuple(labels or []),
             last_refresh=datetime.now(UTC).isoformat(),
         )

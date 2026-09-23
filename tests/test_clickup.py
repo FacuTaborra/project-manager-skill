@@ -35,8 +35,7 @@ class FakeHttp:
             raise AssertionError(f"Unexpected GET {url} (path={path!r})")
         return self._responses[best]
 
-    def post_json(self, payload: dict[str, Any], url: str | None = None) -> dict[str, Any]:
-        assert url is not None, "ClickUp adapter must always pass an explicit url"
+    def post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         self.posts.append((url, payload))
         path = url.split("/api/v2/", 1)[-1].split("/api/v3/", 1)[-1]
         for key, response in self._responses.items():

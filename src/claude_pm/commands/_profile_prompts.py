@@ -11,7 +11,7 @@ from ..domain.models import Workspace
 from ..infrastructure.config_files.credentials_store import credentials_path
 from ._prompt import Choice, choose
 
-WHERE_TO_GET_ONE = {
+TOKEN_SOURCE_HINT = {
     ProviderType.CLICKUP: "ClickUp → Settings → Apps → API Token",
     ProviderType.LINEAR: "https://linear.app/settings/api (Read + Write)",
 }
@@ -20,12 +20,14 @@ WHERE_TO_GET_ONE = {
 def ask_provider() -> ProviderType:
     picked = choose(
         "Which tracker does this repo use?",
-        [Choice(id=p.value, label=p.value, detail=WHERE_TO_GET_ONE[p]) for p in ProviderType],
+        [Choice(id=p.value, label=p.value, detail=TOKEN_SOURCE_HINT[p]) for p in ProviderType],
     )
     return ProviderType(picked[0])
 
 
-def report(name: str, email: str, reachable: list[Workspace], workspace_id: str | None) -> None:
+def print_profile_saved(
+    name: str, email: str, reachable: list[Workspace], workspace_id: str | None
+) -> None:
     print(f"  ✓ token valid — authenticated as {email}", file=sys.stderr)
     print(
         f"  ✓ reaches {len(reachable)} workspace(s): "

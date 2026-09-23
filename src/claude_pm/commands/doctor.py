@@ -18,11 +18,11 @@ from ..infrastructure.cache import find_legacy_caches
 from ..infrastructure.config_files.credentials_store import (
     credentials_path,
     list_profiles,
-    warn_if_world_readable,
+    world_readable_warning,
 )
 from ..infrastructure.context.obsidian import DEFAULT_VAULT
 from ..infrastructure.repo_detect import find_pm_file
-from ._helpers import build_provider
+from ._wiring import build_provider
 
 
 def run(args: argparse.Namespace) -> int:
@@ -64,7 +64,7 @@ def _report_credentials() -> bool:
 
     names = ", ".join(f"{p.name} ({p.provider_type.value})" for p in profiles)
     print(f"  Credentials:   {names}")
-    if warning := warn_if_world_readable(path):
+    if warning := world_readable_warning(path):
         print(f"  WARNING:       {warning}")
     return True
 
@@ -90,9 +90,9 @@ def _report_config(config: RepoContext) -> None:
         f" {'(exists)' if config.cache_path.is_file() else '(not yet)'}"
     )
 
-    if legacy := find_legacy_caches(config.vault_path):
-        print(f"  Old caches:    {len(legacy)} orphaned file(s), safe to delete:")
-        for path in legacy[:5]:
+    if legacy_cache_files := find_legacy_caches(config.vault_path):
+        print(f"  Old caches:    {len(legacy_cache_files)} orphaned file(s), safe to delete:")
+        for path in legacy_cache_files[:5]:
             print(f"                   {path}")
 
 

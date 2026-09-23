@@ -31,7 +31,7 @@ from ...domain.binding import (
 )
 from ...exceptions import ConfigError
 from ..repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
-from ._toml import reject_unknown, toml_string
+from ._toml import reject_unknown_keys, toml_string
 
 _TOP_LEVEL_KEYS = {"version", "provider", "profile", "scope", "defaults"}
 _SCOPE_KEYS = {
@@ -69,27 +69,27 @@ def parse_pm_file(text: str, *, path: Path) -> RepoBinding:
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
 
-    reject_unknown(raw, _TOP_LEVEL_KEYS, path, "top level")
+    reject_unknown_keys(raw, _TOP_LEVEL_KEYS, path, "top level")
 
-    version = _int(raw.get("version", PM_FILE_VERSION), "version", path)
+    version = _require_int(raw.get("version", PM_FILE_VERSION), "version", path)
     if version != PM_FILE_VERSION:
         raise ConfigError(
             f"{path}: unsupported version {version} (this build understands {PM_FILE_VERSION}). "
             "Upgrade pm, or re-run `pm init --force`."
         )
 
-    provider = _provider(raw.get("provider"), path)
-    profile = _str(raw.get("profile"), "profile", path, required=True)
+    provider = _parse_provider(raw.get("provider"), path)
+    profile = _require_str(raw.get("profile"), "profile", path, required=True)
 
     scope_raw = raw.get("scope")
     if not isinstance(scope_raw, dict):
         raise ConfigError(f"{path}: missing the [scope] table. {_INIT_HINT}")
-    scope = _scope(scope_raw, path)
+    scope = _parse_scope(scope_raw, path)
 
     defaults_raw = raw.get("defaults", {})
     if not isinstance(defaults_raw, dict):
         raise ConfigError(f"{path}: [defaults] must be a table.")
-    defaults = _defaults(defaults_raw, path)
+    defaults = _parse_defaults(defaults_raw, path)
 
     repo_root = find_repo_root(path.parent) or path.parent
     return RepoBinding(
@@ -103,11 +103,11 @@ def parse_pm_file(text: str, *, path: Path) -> RepoBinding:
     )
 
 
-def _scope(raw: dict[str, Any], path: Path) -> WriteScope:
-    reject_unknown(raw, _SCOPE_KEYS, path, "[scope]")
+def _parse_scope(raw: dict[str, Any], path: Path) -> WriteScope:
+    reject_unknown_keys(raw, _SCOPE_KEYS, path, "[scope]")
 
-    workspace_id = _str(raw.get("workspace_id"), "scope.workspace_id", path, required=True)
-    team_id = _str(raw.get("space_id"), "scope.space_id", path, required=True)
+    workspace_id = _require_str(raw.get("workspace_id"), "scope.workspace_id", path, required=True)
+    team_id = _require_str(raw.get("space_id"), "scope.space_id", path, required=True)
 
     lists_raw = raw.get("lists")
     if not isinstance(lists_raw, list) or not lists_raw:
@@ -121,24 +121,26 @@ def _scope(raw: dict[str, Any], path: Path) -> WriteScope:
     for index, entry in enumerate(lists_raw):
         if not isinstance(entry, dict):
             raise ConfigError(f"{path}: [scope].lists[{index}] must be a {{ id, name }} table.")
-        reject_unknown(entry, _LIST_KEYS, path, f"[scope].lists[{index}]")
-        list_id = _str(entry.get("id"), f"scope.lists[{index}].id", path, required=True)
+        reject_unknown_keys(entry, _LIST_KEYS, path, f"[scope].lists[{index}]")
+        list_id = _require_str(entry.get("id"), f"scope.lists[{index}].id", path, required=True)
         if list_id in seen:
             raise ConfigError(f"{path}: [scope].lists has {list_id} twice.")
         seen.add(list_id)
-        projects.append(ScopeProject(id=list_id, name=_str(entry.get("name"), "", path) or ""))
+        projects.append(
+            ScopeProject(id=list_id, name=_require_str(entry.get("name"), "", path) or "")
+        )
 
     return WriteScope(
         workspace_id=workspace_id,
         team_id=team_id,
         projects=tuple(projects),
-        workspace_name=_str(raw.get("workspace_name"), "", path) or "",
-        team_name=_str(raw.get("space_name"), "", path) or "",
+        workspace_name=_require_str(raw.get("workspace_name"), "", path) or "",
+        team_name=_require_str(raw.get("space_name"), "", path) or "",
     )
 
 
-def _defaults(raw: dict[str, Any], path: Path) -> IssueDefaults:
-    reject_unknown(raw, _DEFAULTS_KEYS, path, "[defaults]")
+def _parse_defaults(raw: dict[str, Any], path: Path) -> IssueDefaults:
+    reject_unknown_keys(raw, _DEFAULTS_KEYS, path, "[defaults]")
 
     labels_raw = raw.get("labels", [])
     if not isinstance(labels_raw, list):
@@ -150,24 +152,26 @@ def _defaults(raw: dict[str, Any], path: Path) -> IssueDefaults:
         labels.append(entry.strip())
 
     priority_raw = raw.get("priority")
-    priority = None if priority_raw is None else _int(priority_raw, "defaults.priority", path)
+    priority = (
+        None if priority_raw is None else _require_int(priority_raw, "defaults.priority", path)
+    )
     if priority is not None and not 0 <= priority <= 4:
         raise ConfigError(f"{path}: [defaults].priority must be 0-4 (got {priority}).")
 
     return IssueDefaults(
         labels=tuple(labels),
-        state=_str(raw.get("state"), "", path) or None,
+        state=_require_str(raw.get("state"), "", path) or None,
         priority=priority,
     )
 
 
-def _provider(value: Any, path: Path) -> ProviderType:
+def _parse_provider(value: Any, path: Path) -> ProviderType:
     if value is None:
         raise ConfigError(f"{path}: missing `provider`. {_INIT_HINT}")
     return ProviderType.parse(value, where=f"{path}: ", error=ConfigError)
 
 
-def _str(value: Any, name: str, path: Path, *, required: bool = False) -> str:
+def _require_str(value: Any, name: str, path: Path, *, required: bool = False) -> str:
     if value is None or value == "":
         if required:
             raise ConfigError(f"{path}: `{name}` is required. {_INIT_HINT}")
@@ -177,7 +181,7 @@ def _str(value: Any, name: str, path: Path, *, required: bool = False) -> str:
     return value.strip()
 
 
-def _int(value: Any, name: str, path: Path) -> int:
+def _require_int(value: Any, name: str, path: Path) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(f"{path}: `{name}` must be an integer, got {type(value).__name__}.")
     return value

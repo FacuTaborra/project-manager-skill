@@ -23,9 +23,10 @@ from .commands import (
     get_issue,
     init,
     install_skill,
-    lists,
+    lookups,
     search,
     setup,
+    structure,
     update_issue,
 )
 from .exceptions import EXIT_ERROR, EXIT_OK, NeedsChoice, PMError
@@ -209,21 +210,21 @@ def _add_read_commands(
     p_get.set_defaults(func=get_issue.run)
 
     p_teams = sub.add_parser("list-teams", parents=[common], help="List spaces/teams.")
-    p_teams.set_defaults(func=lists.run_list_teams)
+    p_teams.set_defaults(func=lookups.run_list_teams)
 
     p_projects = sub.add_parser("list-projects", parents=[common], help="List lists/projects.")
     p_projects.add_argument("--team-id", default=None, help="Space/team id; defaults to the scope.")
-    p_projects.set_defaults(func=lists.run_list_projects)
+    p_projects.set_defaults(func=lookups.run_list_projects)
 
     p_states = sub.add_parser("list-states", parents=[common], help="List workflow states.")
-    p_states.set_defaults(func=lists.run_list_states)
+    p_states.set_defaults(func=lookups.run_list_states)
 
     p_labels = sub.add_parser("list-labels", parents=[common], help="List labels/tags.")
-    p_labels.set_defaults(func=lists.run_list_labels)
+    p_labels.set_defaults(func=lookups.run_list_labels)
 
     p_user = sub.add_parser("resolve-user", parents=[common], help="Resolve a user id by email.")
     p_user.add_argument("email")
-    p_user.set_defaults(func=lists.run_resolve_user)
+    p_user.set_defaults(func=lookups.run_resolve_user)
 
 
 def _add_write_commands(
@@ -291,13 +292,13 @@ def _add_write_commands(
         "create-project", parents=[structural], help="Create a list/project in this repo's space."
     )
     p_create_project.add_argument("name")
-    p_create_project.set_defaults(func=lists.run_create_project)
+    p_create_project.set_defaults(func=structure.run_create_project)
 
     p_create_team = sub.add_parser(
         "create-team", parents=[structural], help="Create a team (Linear only)."
     )
     p_create_team.add_argument("name")
-    p_create_team.set_defaults(func=lists.run_create_team)
+    p_create_team.set_defaults(func=structure.run_create_team)
 
 
 def build_parser() -> argparse.ArgumentParser:

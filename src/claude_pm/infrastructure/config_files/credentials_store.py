@@ -17,7 +17,7 @@ from typing import Any
 
 from ...domain.binding import CredentialProfile, ProfileEntry, ProviderType
 from ...exceptions import ConfigError
-from ._toml import reject_unknown, toml_string
+from ._toml import reject_unknown_keys, toml_string
 
 CREDENTIALS_VERSION = 1
 
@@ -61,13 +61,13 @@ def list_profiles(path: Path | None = None) -> list[CredentialProfile]:
     if not isinstance(table, dict):
         raise ConfigError(f"{target}: [profiles] must be a table.")
 
-    return [_profile(name, entry, target) for name, entry in table.items()]
+    return [_parse_profile(name, entry, target) for name, entry in table.items()]
 
 
-def _profile(name: str, raw: Any, path: Path) -> CredentialProfile:
+def _parse_profile(name: str, raw: Any, path: Path) -> CredentialProfile:
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: [profiles.{name}] must be a table.")
-    reject_unknown(raw, _PROFILE_KEYS, path, f"[profiles.{name}]")
+    reject_unknown_keys(raw, _PROFILE_KEYS, path, f"[profiles.{name}]")
 
     provider_type = ProviderType.parse(
         raw.get("provider"), where=f"{path}: [profiles.{name}]: ", error=ConfigError
@@ -101,7 +101,9 @@ def write_profiles(
 
     if replace and path.is_file():
         names = {name for name, *_ in entries}
-        path.write_text(_without(path.read_text(encoding="utf-8"), names), encoding="utf-8")
+        path.write_text(
+            _remove_profile_tables(path.read_text(encoding="utf-8"), names), encoding="utf-8"
+        )
 
     header = (
         ""
@@ -126,7 +128,7 @@ def write_profiles(
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 
 
-def _without(text: str, names: set[str]) -> str:
+def _remove_profile_tables(text: str, names: set[str]) -> str:
     """Drop the given [profiles.X] tables so --force can replace rather than duplicate."""
     kept: list[str] = []
     dropping = False
@@ -165,7 +167,7 @@ def _read_env_key(path: Path, key: str) -> str | None:
     return None
 
 
-def warn_if_world_readable(path: Path | None = None) -> str | None:
+def world_readable_warning(path: Path | None = None) -> str | None:
     """Return a warning when the credentials file is readable beyond its owner.
 
     Windows inherits directory ACLs and has no mode bits worth checking, so this

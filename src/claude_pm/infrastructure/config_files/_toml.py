@@ -42,10 +42,12 @@ def _escape(char: str) -> str:
     return char
 
 
-def reject_unknown(raw: dict[str, Any], allowed: set[str], path: Path, where: str) -> None:
-    unknown = sorted(set(raw) - allowed)
+def reject_unknown_keys(
+    table: dict[str, Any], allowed_keys: set[str], path: Path, table_label: str
+) -> None:
+    unknown = sorted(set(table) - allowed_keys)
     if unknown:
         raise ConfigError(
-            f"{path}: unknown key(s) in {where}: {', '.join(unknown)}. "
-            f"Allowed: {', '.join(sorted(allowed))}."
+            f"{path}: unknown key(s) in {table_label}: {', '.join(unknown)}. "
+            f"Allowed: {', '.join(sorted(allowed_keys))}."
         )

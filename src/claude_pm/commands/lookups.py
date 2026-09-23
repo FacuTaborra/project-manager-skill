@@ -1,7 +1,6 @@
 """Lookup helpers: list-teams, list-projects, list-states, list-labels, resolve-user.
 
-Reads go straight to the provider. The two structural writes here go through the
-guard, which refuses them unless --allow-structural-changes was passed.
+Reads go straight to the provider.
 """
 
 from __future__ import annotations
@@ -9,13 +8,8 @@ from __future__ import annotations
 import argparse
 
 from ..exceptions import EXIT_OK, PMError
-from ._helpers import (
-    build_setup,
-    prepare_read,
-    prepare_write,
-    print_json,
-    print_result,
-)
+from ._output import print_json
+from ._wiring import build_cache_refresher, prepare_read
 
 
 def run_list_teams(args: argparse.Namespace) -> int:
@@ -27,7 +21,7 @@ def run_list_teams(args: argparse.Namespace) -> int:
 
 def run_list_states(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    cache = build_setup(config, provider).verify().cache
+    cache = build_cache_refresher(config, provider).refresh().cache
     print_json({"states": cache.state_id_by_name})
     return EXIT_OK
 
@@ -55,30 +49,6 @@ def run_list_projects(args: argparse.Namespace) -> int:
                 for p in projects
             ]
         }
-    )
-    return EXIT_OK
-
-
-def run_create_project(args: argparse.Namespace) -> int:
-    _, _, guard = prepare_write(args)
-    print_result(
-        guard.create_list(args.name),
-        lambda project: {
-            "ok": True,
-            "project": {"id": project.id, "name": project.name},
-        },
-    )
-    return EXIT_OK
-
-
-def run_create_team(args: argparse.Namespace) -> int:
-    _, _, guard = prepare_write(args)
-    print_result(
-        guard.create_space(args.name),
-        lambda team: {
-            "ok": True,
-            "team": {"id": team.id, "name": team.name, "key": team.key},
-        },
     )
     return EXIT_OK
 

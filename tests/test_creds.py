@@ -52,7 +52,7 @@ def _args(**overrides: object) -> argparse.Namespace:
 
 
 def _use(monkeypatch: pytest.MonkeyPatch, provider: FakeProvider) -> None:
-    monkeypatch.setattr(profiles, "get_provider", lambda *a, **k: provider)
+    monkeypatch.setattr(profiles, "create_provider", lambda *a, **k: provider)
 
 
 class TestVerification:

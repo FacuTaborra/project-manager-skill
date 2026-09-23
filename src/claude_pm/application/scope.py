@@ -5,7 +5,8 @@ methods of `IssueProvider` — `tests/test_scope_invariants.py` enforces that by
 inspection. Two things follow from it:
 
   * nothing can write to a destination the repo has not declared in `.pm.toml`,
-    because `_authorize` is the only code that hands out a writable list id;
+    because `_authorized_project_id` is the only code that hands out a writable
+    project id;
   * `--dry-run` is total rather than best-effort, because there is no second
     path to the API to forget about.
 
@@ -46,9 +47,7 @@ class DryRun:
         }
 
 
-Outcome = Issue | Doc | Project | Team | DryRun
-
-T = TypeVar("T")
+WriteResult = TypeVar("WriteResult")
 
 
 @dataclass
@@ -58,20 +57,22 @@ class ScopeGuard:
     cache: Cache
     defaults: IssueDefaults = field(default_factory=IssueDefaults)
     dry_run: bool = False
-    allow_structural: bool = False
-    _owners: dict[str, tuple[str | None, str]] = field(default_factory=dict, init=False)
+    allow_structural_changes: bool = False
+    _owning_project_by_issue: dict[str, tuple[str | None, str]] = field(
+        default_factory=dict, init=False
+    )
 
     # -- the chokepoint ------------------------------------------------------
 
-    def _authorize(
-        self, action: str, *, list_id: str | None = None, issue_id: str | None = None
+    def _authorized_project_id(
+        self, action: str, *, project_id: str | None = None, issue_id: str | None = None
     ) -> str:
-        """Return the list id this mutation may touch, or refuse.
+        """Return the project id this mutation may touch, or refuse.
 
         The only function in the codebase that grants write permission.
         """
         if issue_id is not None:
-            owner_id, owner_name = self._owning_list(issue_id)
+            owner_id, owner_name = self._owning_project(issue_id)
             if owner_id is None:
                 raise ScopeViolation(
                     f"{action}: {issue_id} belongs to no project, so this repo's scope "
@@ -84,7 +85,7 @@ class ScopeGuard:
                 )
             return owner_id
 
-        if list_id is None:
+        if project_id is None:
             if len(self.scope.projects) == 1:
                 return self.scope.projects[0].id
             raise NeedsChoice(
@@ -95,24 +96,26 @@ class ScopeGuard:
                 },
             )
 
-        if list_id not in self.scope.project_ids:
+        if project_id not in self.scope.project_ids:
             allowed = ", ".join(f"{r.name or r.id} ({r.id})" for r in self.scope.projects)
             raise ScopeViolation(
-                f"{action}: {list_id} is not in this repo's scope. Allowed: {allowed}. "
+                f"{action}: {project_id} is not in this repo's scope. Allowed: {allowed}. "
                 f"If the board really changed, re-run `pm init --force`."
             )
-        return list_id
+        return project_id
 
-    def _owning_list(self, issue_id: str) -> tuple[str | None, str]:
-        """Which list/project an issue belongs to. One GET, memoized per process."""
-        if issue_id not in self._owners:
+    def _owning_project(self, issue_id: str) -> tuple[str | None, str]:
+        """Which project an issue belongs to. One GET, memoized per process."""
+        if issue_id not in self._owning_project_by_issue:
             issue = self.provider.get_issue(issue_id)
             project = issue.project
-            self._owners[issue_id] = (project.id, project.name) if project else (None, "")
-        return self._owners[issue_id]
+            self._owning_project_by_issue[issue_id] = (
+                (project.id, project.name) if project else (None, "")
+            )
+        return self._owning_project_by_issue[issue_id]
 
     def _require_structural(self, action: str) -> None:
-        if not self.allow_structural:
+        if not self.allow_structural_changes:
             raise ScopeViolation(
                 f"{action} changes the board's structure and is off by default. "
                 f"Re-run with --allow-structural-changes if that is really what you want."
@@ -122,10 +125,10 @@ class ScopeGuard:
         self,
         action: str,
         *,
-        target: str | None,
+        project_id: str | None,
         payload: dict[str, Any],
-        call: Callable[[], T],
-    ) -> T | DryRun:
+        perform_write: Callable[[], WriteResult],
+    ) -> WriteResult | DryRun:
         """Run the write, or describe it instead when this is a dry run.
 
         Every public write ends here, after its own check has passed. Keeping
@@ -135,13 +138,13 @@ class ScopeGuard:
         if self.dry_run:
             return DryRun(
                 action=action,
-                destination=self._describe(target),
-                list_id=target,
+                destination=self._destination_label(project_id),
+                list_id=project_id,
                 payload=payload,
             )
-        return call()
+        return perform_write()
 
-    def _docs(self, action: str) -> DocProvider:
+    def _require_doc_provider(self, action: str) -> DocProvider:
         """The provider as a docs-capable one, or a refusal that says why.
 
         Checked in dry runs too, so a preview never promises a write the
@@ -154,14 +157,14 @@ class ScopeGuard:
             )
         return self.provider
 
-    def _describe(self, list_id: str | None) -> str:
-        name = self.cache.project_name(list_id or "") if list_id else None
-        if not name and list_id:
-            name = next((r.name for r in self.scope.projects if r.id == list_id), None)
-        tail = name or list_id or "(workspace)"
-        head = self.scope.workspace_name or self.scope.workspace_id
-        middle = self.scope.team_name or self.scope.team_id
-        return f"{head} → {middle} → {tail}"
+    def _destination_label(self, project_id: str | None) -> str:
+        project_label = self.cache.project_name(project_id or "") if project_id else None
+        if not project_label and project_id:
+            project_label = next((r.name for r in self.scope.projects if r.id == project_id), None)
+        project_label = project_label or project_id or "(workspace)"
+        workspace_label = self.scope.workspace_name or self.scope.workspace_id
+        team_label = self.scope.team_name or self.scope.team_id
+        return f"{workspace_label} → {team_label} → {project_label}"
 
     # -- writes --------------------------------------------------------------
 
@@ -170,13 +173,13 @@ class ScopeGuard:
         *,
         title: str,
         description: str,
-        list_id: str | None = None,
+        project_id: str | None = None,
         state: str | None = None,
         priority: int | None = None,
         assignee_email: str | None = None,
         labels: Sequence[str] = (),
     ) -> Issue | DryRun:
-        target = self._authorize("create-issue", list_id=list_id)
+        authorized_project_id = self._authorized_project_id("create-issue", project_id=project_id)
 
         state_name = state or self.defaults.state
         effective_priority = priority if priority is not None else self.defaults.priority
@@ -185,7 +188,7 @@ class ScopeGuard:
         draft = IssueDraft(
             title=title,
             description=description,
-            project_id=target,
+            project_id=authorized_project_id,
             team_id=self.scope.team_id,
             state_id=self.resolve_state_id(state_name),
             priority=effective_priority,
@@ -194,7 +197,7 @@ class ScopeGuard:
         )
         return self._mutate(
             "create-issue",
-            target=target,
+            project_id=authorized_project_id,
             payload={
                 "title": title,
                 "description": description,
@@ -203,7 +206,7 @@ class ScopeGuard:
                 "assignee": assignee_email,
                 "labels": list(label_names),
             },
-            call=lambda: self.provider.create_issue(draft),
+            perform_write=lambda: self.provider.create_issue(draft),
         )
 
     def update_issue(
@@ -228,7 +231,7 @@ class ScopeGuard:
                 "--title/--description/--state/--priority/--assignee."
             )
 
-        target = self._authorize("update-issue", issue_id=issue_id)
+        authorized_project_id = self._authorized_project_id("update-issue", issue_id=issue_id)
         update = IssueUpdate(
             issue_id=issue_id,
             title=title,
@@ -239,7 +242,7 @@ class ScopeGuard:
         )
         return self._mutate(
             "update-issue",
-            target=target,
+            project_id=authorized_project_id,
             payload={
                 "id": issue_id,
                 "title": title,
@@ -248,7 +251,7 @@ class ScopeGuard:
                 "priority": priority,
                 "assignee": assignee_email,
             },
-            call=lambda: self.provider.update_issue(update),
+            perform_write=lambda: self.provider.update_issue(update),
         )
 
     def create_doc(self, *, title: str, content: str | None) -> Doc | DryRun:
@@ -257,12 +260,12 @@ class ScopeGuard:
         The workspace pin checked when the guard was built is what keeps them
         in the right account.
         """
-        docs = self._docs("create-doc")
+        docs = self._require_doc_provider("create-doc")
         return self._mutate(
             "create-doc",
-            target=None,
+            project_id=None,
             payload={"title": title, "has_content": content is not None},
-            call=lambda: docs.create_doc(title, content),
+            perform_write=lambda: docs.create_doc(title, content),
         )
 
     def update_doc(
@@ -273,42 +276,44 @@ class ScopeGuard:
         content: str | None = None,
         page_id: str | None = None,
     ) -> Doc | DryRun:
-        docs = self._docs("update-doc")
+        docs = self._require_doc_provider("update-doc")
         return self._mutate(
             "update-doc",
-            target=None,
+            project_id=None,
             payload={
                 "doc_id": doc_id,
                 "title": title,
                 "page_id": page_id,
                 "has_content": content is not None,
             },
-            call=lambda: docs.update_doc(doc_id, title=title, content=content, page_id=page_id),
+            perform_write=lambda: docs.update_doc(
+                doc_id, title=title, content=content, page_id=page_id
+            ),
         )
 
     # -- structural writes, off by default -----------------------------------
 
-    def create_list(self, name: str) -> Project | DryRun:
+    def create_project(self, name: str) -> Project | DryRun:
         self._require_structural("create-project")
         return self._mutate(
             "create-project",
-            target=None,
+            project_id=None,
             payload={"name": name, "space_id": self.scope.team_id},
-            call=lambda: self.provider.create_project(name, self.scope.team_id),
+            perform_write=lambda: self.provider.create_project(name, self.scope.team_id),
         )
 
-    def create_space(self, name: str) -> Team | DryRun:
+    def create_team(self, name: str) -> Team | DryRun:
         self._require_structural("create-team")
         return self._mutate(
             "create-team",
-            target=None,
+            project_id=None,
             payload={"name": name},
-            call=lambda: self.provider.create_team(name),
+            perform_write=lambda: self.provider.create_team(name),
         )
 
     # -- resolution helpers (all reads) --------------------------------------
 
-    def merge_labels(self, extra: Sequence[str]) -> tuple[str, ...]:
+    def merge_labels(self, explicit_labels: Sequence[str]) -> tuple[str, ...]:
         """Repo defaults first, then explicit ones, de-duplicated case-insensitively.
 
         Done here so no command can forget it: this is what keeps two repos
@@ -316,7 +321,7 @@ class ScopeGuard:
         """
         merged: list[str] = []
         seen: set[str] = set()
-        for name in (*self.defaults.labels, *extra):
+        for name in (*self.defaults.labels, *explicit_labels):
             key = name.strip().lower()
             if key and key not in seen:
                 seen.add(key)
@@ -343,18 +348,19 @@ class ScopeGuard:
     def resolve_label_ids(self, names: Sequence[str]) -> tuple[str, ...]:
         if not names:
             return ()
-        available = {lbl["name"].lower(): lbl["id"] for lbl in self.cache.labels}
-        if not available:
-            available = {
-                lbl.name.lower(): lbl.id for lbl in self.provider.list_labels(self.scope.team_id)
+        label_id_by_name = {lbl["name"].lower(): lbl["id"] for lbl in self.cache.labels}
+        if not label_id_by_name:
+            label_id_by_name = {
+                label.name.lower(): label.id
+                for label in self.provider.list_labels(self.scope.team_id)
             }
         resolved: list[str] = []
         for name in names:
-            label_id = available.get(name.lower())
+            label_id = label_id_by_name.get(name.lower())
             if label_id is None:
-                known = ", ".join(sorted(available)) or "(none)"
+                known_names = ", ".join(sorted(label_id_by_name)) or "(none)"
                 raise PMError(
-                    f"Label {name!r} does not exist in this space. Available: {known}. "
+                    f"Label {name!r} does not exist in this space. Available: {known_names}. "
                     f"Create the label in the tracker, or remove it from [defaults].labels "
                     f"in .pm.toml."
                 )
@@ -387,15 +393,15 @@ def build_guard(
     cache: Cache,
     *,
     dry_run: bool = False,
-    allow_structural: bool = False,
-    verify_pin: bool = True,
+    allow_structural_changes: bool = False,
+    check_workspace_pin: bool = True,
 ) -> ScopeGuard:
     """Composition root for writes.
 
-    `verify_pin=False` is for callers that already ran `verify_workspace_pin`,
-    so the check is not paid for twice.
+    `check_workspace_pin=False` is for callers that already ran
+    `verify_workspace_pin`, so the check is not paid for twice.
     """
-    if verify_pin:
+    if check_workspace_pin:
         verify_workspace_pin(config, provider)
     return ScopeGuard(
         provider=provider,
@@ -403,5 +409,5 @@ def build_guard(
         cache=cache,
         defaults=config.pm_file.defaults,
         dry_run=dry_run,
-        allow_structural=allow_structural,
+        allow_structural_changes=allow_structural_changes,
     )

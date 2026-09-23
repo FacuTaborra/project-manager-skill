@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 
 from ..exceptions import EXIT_OK
-from ._helpers import prepare_write, print_result, read_text_arg
+from ._input import read_text_arg
+from ._output import print_write_outcome
+from ._wiring import prepare_write
 
 
 def run(args: argparse.Namespace) -> int:
@@ -22,7 +24,7 @@ def run(args: argparse.Namespace) -> int:
         priority=args.priority,
         assignee_email=args.assignee,
     )
-    print_result(
+    print_write_outcome(
         outcome,
         lambda issue: {
             "ok": True,
