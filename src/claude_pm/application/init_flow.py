@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..domain.binding import Defaults, ListRef, ScopeSpec
+from ..domain.binding import IssueDefaults, ScopeProject, WriteScope
 from ..domain.ports import IssueProvider
 from ..exceptions import NeedsChoice, PMError
 
@@ -25,10 +25,10 @@ from ..exceptions import NeedsChoice, PMError
 class LegacySection:
     """One `[repo]` section of the old INI file."""
 
-    provider: str | None
-    space: str | None
-    projects: tuple[str, ...]
-    label: str | None
+    provider_name: str | None
+    team_name: str | None
+    project_names: tuple[str, ...]
+    label_name: str | None
 
 
 def read_legacy_section(path: Path, repo_name: str) -> LegacySection | None:
@@ -44,12 +44,12 @@ def read_legacy_section(path: Path, repo_name: str) -> LegacySection | None:
     if name is None:
         return None
     section = parser[name]
-    projects = tuple(p.strip() for p in section.get("project", "").split(",") if p.strip())
+    project_names = tuple(p.strip() for p in section.get("project", "").split(",") if p.strip())
     return LegacySection(
-        provider=section.get("provider") or None,
-        space=section.get("space") or None,
-        projects=projects,
-        label=section.get("label") or None,
+        provider_name=section.get("provider") or None,
+        team_name=section.get("space") or None,
+        project_names=project_names,
+        label_name=section.get("label") or None,
     )
 
 
@@ -113,7 +113,7 @@ def resolve_lists(
     *,
     list_ids: list[str] | None = None,
     list_names: list[str] | None = None,
-) -> tuple[ListRef, ...]:
+) -> tuple[ScopeProject, ...]:
     """Resolve the writable destinations by id, else by name, else ask."""
     projects = provider.list_projects(space_id)
     if not projects:
@@ -126,7 +126,7 @@ def resolve_lists(
             project = by_id.get(wanted)
             if project is None:
                 raise PMError(f"List {wanted} not found in this space. {_options(projects)}")
-            refs.append(ListRef(id=project.id, name=project.name))
+            refs.append(ScopeProject(id=project.id, name=project.name))
         return tuple(refs)
 
     if list_names:
@@ -136,7 +136,7 @@ def resolve_lists(
             project = by_name.get(wanted.lower())
             if project is None:
                 raise PMError(f"List {wanted!r} not found in this space. {_options(projects)}")
-            refs.append(ListRef(id=project.id, name=project.name))
+            refs.append(ScopeProject(id=project.id, name=project.name))
         return tuple(refs)
 
     raise NeedsChoice(
@@ -156,7 +156,7 @@ def build_scope(
     space_name: str | None = None,
     list_ids: list[str] | None = None,
     list_names: list[str] | None = None,
-) -> ScopeSpec:
+) -> WriteScope:
     """Resolve a full scope, pinning the provider as soon as the workspace is known.
 
     Takes a factory rather than a provider because the dependency is real: spaces
@@ -169,21 +169,21 @@ def build_scope(
     resolved_space, resolved_space_name = resolve_space(
         provider, space_id=space_id, space_name=space_name
     )
-    lists = resolve_lists(provider, resolved_space, list_ids=list_ids, list_names=list_names)
-    return ScopeSpec(
+    projects = resolve_lists(provider, resolved_space, list_ids=list_ids, list_names=list_names)
+    return WriteScope(
         workspace_id=resolved_workspace,
         workspace_name=workspace_name,
-        space_id=resolved_space,
-        space_name=resolved_space_name,
-        lists=lists,
+        team_id=resolved_space,
+        team_name=resolved_space_name,
+        projects=projects,
     )
 
 
-def defaults_from_legacy(section: LegacySection | None) -> Defaults:
+def defaults_from_legacy(section: LegacySection | None) -> IssueDefaults:
     """`label:` was parsed and dropped for months. Here it finally lands somewhere."""
-    if section is None or not section.label:
-        return Defaults()
-    return Defaults(labels=(section.label,))
+    if section is None or not section.label_name:
+        return IssueDefaults()
+    return IssueDefaults(labels=(section.label_name,))
 
 
 def _options(items: list) -> str:  # type: ignore[type-arg]

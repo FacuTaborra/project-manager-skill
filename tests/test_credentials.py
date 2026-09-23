@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.claude_pm.application.profiles import load_profile
-from src.claude_pm.domain.binding import Profile, ProviderType
+from src.claude_pm.domain.binding import CredentialProfile, ProviderType
 from src.claude_pm.exceptions import ConfigError, NeedsChoice
 from src.claude_pm.infrastructure.config_files.credentials_store import list_profiles
 
@@ -49,7 +49,7 @@ class TestListProfiles:
     def test_parses_all_profiles(self, tmp_path: Path) -> None:
         profiles = list_profiles(_write(tmp_path, TWO_PROFILES))
         assert [p.name for p in profiles] == ["4plus", "personal-linear"]
-        assert profiles[0].provider is ProviderType.CLICKUP
+        assert profiles[0].provider_type is ProviderType.CLICKUP
         assert profiles[0].workspace_id == "9013377000"
         assert profiles[1].workspace_id is None
 
@@ -73,7 +73,7 @@ class TestListProfiles:
 class TestLoadProfile:
     def test_by_name(self, tmp_path: Path) -> None:
         profile = load_profile("personal-linear", path=_write(tmp_path, TWO_PROFILES))
-        assert profile.provider is ProviderType.LINEAR
+        assert profile.provider_type is ProviderType.LINEAR
 
     def test_unnamed_with_a_single_profile_uses_it(self, tmp_path: Path) -> None:
         assert load_profile(None, path=_write(tmp_path, ONE_PROFILE)).name == "solo"
@@ -127,11 +127,11 @@ class TestEnvToken:
 
 class TestRedaction:
     def test_keeps_only_the_tail(self) -> None:
-        profile = Profile("p", ProviderType.CLICKUP, "pk_1234567890ab", "w")
+        profile = CredentialProfile("p", ProviderType.CLICKUP, "pk_1234567890ab", "w")
         assert profile.redacted()["token"] == "…90ab"
 
     def test_short_token_shows_nothing(self) -> None:
-        assert Profile("p", ProviderType.LINEAR, "short").redacted()["token"] == "…"
+        assert CredentialProfile("p", ProviderType.LINEAR, "short").redacted()["token"] == "…"
 
 
 class TestProviderFiltering:

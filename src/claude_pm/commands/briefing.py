@@ -20,7 +20,7 @@ def run(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
     cache = build_setup(config, provider).verify().cache
 
-    projects = cache.lists
+    projects = cache.projects
     if not projects:
         raise CacheInvalid("Cache is missing list info. Run `pm setup --force`.")
 

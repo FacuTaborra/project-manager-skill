@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import argparse
 
-from ..application.repo_context import Config
+from ..application.repo_context import RepoContext
 from ..exceptions import EXIT_OK
 from ._helpers import build_provider, build_setup, print_json
 
 
 def run(args: argparse.Namespace) -> int:
-    config = Config.load(args.repo_name, profile_override=args.profile)
+    config = RepoContext.load(args.repo_name, profile_override=args.profile)
     provider = build_provider(config)
 
     result = build_setup(config, provider).verify(force=args.force)
@@ -25,10 +25,10 @@ def run(args: argparse.Namespace) -> int:
             "refreshed": result.refreshed,
             "warnings": result.warnings,
             "cache": {
-                "space_id": cache.space_id,
-                "space_name": cache.space_name,
-                "lists": list(cache.lists),
-                "state_ids": cache.state_ids,
+                "space_id": cache.team_id,
+                "space_name": cache.team_name,
+                "lists": list(cache.projects),
+                "state_ids": cache.state_id_by_name,
                 "labels": list(cache.labels),
                 "last_refresh": cache.last_refresh,
             },

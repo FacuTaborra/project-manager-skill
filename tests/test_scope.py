@@ -7,14 +7,21 @@ from typing import Any
 
 import pytest
 
-from src.claude_pm.application.repo_context import Config
+from src.claude_pm.application.repo_context import RepoContext
 from src.claude_pm.application.scope import (
     DryRun,
     ScopeGuard,
     build_guard,
     verify_workspace_pin,
 )
-from src.claude_pm.domain.binding import Defaults, ListRef, PmFile, Profile, ProviderType, ScopeSpec
+from src.claude_pm.domain.binding import (
+    CredentialProfile,
+    IssueDefaults,
+    ProviderType,
+    RepoBinding,
+    ScopeProject,
+    WriteScope,
+)
 from src.claude_pm.domain.models import Doc, Issue, IssueUpdate, Label, Project, State, Team, User
 from src.claude_pm.exceptions import NeedsChoice, PMError, ScopeViolation
 from src.claude_pm.infrastructure.cache import Cache
@@ -22,26 +29,26 @@ from src.claude_pm.infrastructure.cache import Cache
 IN_SCOPE = "list-in"
 OTHER = "list-out"
 
-SCOPE = ScopeSpec(
+SCOPE = WriteScope(
     workspace_id="ws-1",
     workspace_name="Hemisphere",
-    space_id="space-1",
-    space_name="4plus",
-    lists=(ListRef(id=IN_SCOPE, name="modulo-energia"),),
+    team_id="space-1",
+    team_name="4plus",
+    projects=(ScopeProject(id=IN_SCOPE, name="modulo-energia"),),
 )
 
-TWO_LISTS = ScopeSpec(
+TWO_LISTS = WriteScope(
     workspace_id="ws-1",
-    space_id="space-1",
-    lists=(ListRef(id=IN_SCOPE, name="a"), ListRef(id="list-two", name="b")),
+    team_id="space-1",
+    projects=(ScopeProject(id=IN_SCOPE, name="a"), ScopeProject(id="list-two", name="b")),
 )
 
 CACHE = Cache(
     fingerprint="fp",
-    space_id="space-1",
-    space_name="4plus",
-    lists=({"id": IN_SCOPE, "name": "modulo-energia"},),
-    state_ids={"Backlog": "Backlog", "In Progress": "in progress"},
+    team_id="space-1",
+    team_name="4plus",
+    projects=({"id": IN_SCOPE, "name": "modulo-energia"},),
+    state_id_by_name={"Backlog": "Backlog", "In Progress": "in progress"},
     labels=({"id": "alerts-api", "name": "alerts-api"}, {"id": "bug", "name": "bug"}),
 )
 
@@ -94,8 +101,8 @@ class FakeProvider:
         self.calls.append(("list_labels", team_id))
         return [Label(id="alerts-api", name="alerts-api")]
 
-    def workspace_ids(self) -> list[str]:
-        self.calls.append(("workspace_ids", None))
+    def reachable_workspace_ids(self) -> list[str]:
+        self.calls.append(("reachable_workspace_ids", None))
         return list(self.reachable)
 
     def names(self) -> list[str]:
@@ -283,28 +290,28 @@ class TestStructuralChanges:
     def test_it_lands_in_this_repos_space(self) -> None:
         provider = FakeProvider()
         _guard(provider, allow_structural=True).create_list("x")
-        assert dict(provider.calls)["create_project"][1] == SCOPE.space_id
+        assert dict(provider.calls)["create_project"][1] == SCOPE.team_id
 
 
 class TestDefaults:
     def test_repo_labels_apply_without_anyone_passing_them(self) -> None:
         """Two repos sharing one list stay distinguishable on their own."""
         provider = FakeProvider()
-        guard = _guard(provider, defaults=Defaults(labels=("alerts-api",)))
+        guard = _guard(provider, defaults=IssueDefaults(labels=("alerts-api",)))
         guard.create_issue(title="T", description="D")
         assert dict(provider.calls)["create_issue"].label_ids == ("alerts-api",)
 
     def test_explicit_labels_come_after_the_defaults(self) -> None:
-        guard = _guard(FakeProvider(), defaults=Defaults(labels=("alerts-api",)))
+        guard = _guard(FakeProvider(), defaults=IssueDefaults(labels=("alerts-api",)))
         assert guard.merge_labels(["bug"]) == ("alerts-api", "bug")
 
     def test_duplicates_are_dropped_case_insensitively(self) -> None:
-        guard = _guard(FakeProvider(), defaults=Defaults(labels=("Alerts-API",)))
+        guard = _guard(FakeProvider(), defaults=IssueDefaults(labels=("Alerts-API",)))
         assert guard.merge_labels(["alerts-api", "bug"]) == ("Alerts-API", "bug")
 
     def test_default_state_and_priority_are_applied(self) -> None:
         provider = FakeProvider()
-        guard = _guard(provider, defaults=Defaults(state="Backlog", priority=3))
+        guard = _guard(provider, defaults=IssueDefaults(state="Backlog", priority=3))
         guard.create_issue(title="T", description="D")
         draft = dict(provider.calls)["create_issue"]
         assert draft.state_id == "Backlog"
@@ -312,7 +319,7 @@ class TestDefaults:
 
     def test_explicit_values_win_over_defaults(self) -> None:
         provider = FakeProvider()
-        guard = _guard(provider, defaults=Defaults(state="Backlog", priority=3))
+        guard = _guard(provider, defaults=IssueDefaults(state="Backlog", priority=3))
         guard.create_issue(title="T", description="D", state="In Progress", priority=1)
         draft = dict(provider.calls)["create_issue"]
         assert draft.state_id == "in progress"
@@ -342,7 +349,7 @@ class TestResolution:
 
     def test_an_empty_label_cache_falls_back_to_the_api(self) -> None:
         provider = FakeProvider()
-        guard = _guard(provider, cache=Cache(state_ids=CACHE.state_ids))
+        guard = _guard(provider, cache=Cache(state_id_by_name=CACHE.state_id_by_name))
         guard.create_issue(title="T", description="D", labels=["alerts-api"])
         assert "list_labels" in provider.names()
 
@@ -356,21 +363,21 @@ class TestResolution:
 class TestBuildGuard:
     """The workspace pin, checked once before any write is possible."""
 
-    def _config(self, *, workspace_id: str = "ws-1") -> Config:
-        pm_file = PmFile(
+    def _config(self, *, workspace_id: str = "ws-1") -> RepoContext:
+        pm_file = RepoBinding(
             path=Path("/repo/.pm.toml"),
             repo_root=Path("/repo"),
-            provider=ProviderType.CLICKUP,
-            profile="4plus",
-            scope=ScopeSpec(
+            provider_type=ProviderType.CLICKUP,
+            profile_name="4plus",
+            scope=WriteScope(
                 workspace_id=workspace_id,
-                space_id="space-1",
-                lists=(ListRef(id=IN_SCOPE, name="modulo-energia"),),
+                team_id="space-1",
+                projects=(ScopeProject(id=IN_SCOPE, name="modulo-energia"),),
             ),
         )
-        return Config(
+        return RepoContext(
             pm_file=pm_file,
-            profile=Profile("4plus", ProviderType.CLICKUP, "pk_x", workspace_id),
+            profile=CredentialProfile("4plus", ProviderType.CLICKUP, "pk_x", workspace_id),
             repo_name="alerts-api",
             cache_path=Path("/tmp/cache.json"),
             fingerprint="fp",
@@ -398,7 +405,7 @@ class TestBuildGuard:
         """prepare_write verifies it earlier, so the guard must not pay for it twice."""
         provider = FakeProvider(reachable=("ws-other",))
         guard = build_guard(self._config(), provider, CACHE, verify_pin=False)
-        assert "workspace_ids" not in provider.names()
+        assert "reachable_workspace_ids" not in provider.names()
         assert guard.scope.workspace_id == "ws-1"
 
     def test_verify_workspace_pin_is_callable_on_its_own(self) -> None:

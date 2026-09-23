@@ -11,7 +11,7 @@ import argparse
 import sys
 
 from ..application.onboarding import SKILL_FILE, next_step
-from ..application.repo_context import Config
+from ..application.repo_context import RepoContext
 from ..application.scope import verify_workspace_pin
 from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError, ScopeViolation
 from ..infrastructure.cache import find_legacy_caches
@@ -40,7 +40,7 @@ def run(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     try:
-        config = Config.load(args.repo_name, profile_override=args.profile)
+        config = RepoContext.load(args.repo_name, profile_override=args.profile)
     except PMError as exc:
         print(f"  Config:        FAILED — {exc}")
         return EXIT_ERROR
@@ -62,17 +62,17 @@ def _report_credentials() -> bool:
         print(f"  Credentials:   none ({path})")
         return False
 
-    names = ", ".join(f"{p.name} ({p.provider.value})" for p in profiles)
+    names = ", ".join(f"{p.name} ({p.provider_type.value})" for p in profiles)
     print(f"  Credentials:   {names}")
     if warning := warn_if_world_readable(path):
         print(f"  WARNING:       {warning}")
     return True
 
 
-def _report_config(config: Config) -> None:
+def _report_config(config: RepoContext) -> None:
     print(f"  Repo:          {config.repo_name}  ({config.repo_root})")
     print(f"  .pm.toml:      {config.pm_file.path}")
-    print(f"  Provider:      {config.provider_name.value}")
+    print(f"  Provider:      {config.provider_type.value}")
     print(f"  Profile:       {config.profile.name}")
     print(f"  Scope:         {config.scope.describe()}")
     if config.pm_file.defaults.labels:
@@ -96,7 +96,7 @@ def _report_config(config: Config) -> None:
             print(f"                   {path}")
 
 
-def _report_connectivity(config: Config) -> int:
+def _report_connectivity(config: RepoContext) -> int:
     print("  Provider ping: testing...")
     try:
         provider = build_provider(config)

@@ -27,10 +27,10 @@ class InMemoryCacheRepository:
     ) -> Cache:
         self._cache = Cache(
             fingerprint=self._cache.fingerprint,
-            space_id=space_id,
-            space_name=space_name,
-            lists=tuple(lists),
-            state_ids=state_ids,
+            team_id=space_id,
+            team_name=space_name,
+            projects=tuple(lists),
+            state_id_by_name=state_ids,
             labels=tuple(labels or []),
             last_refresh=datetime.now(UTC).isoformat(),
         )

@@ -49,7 +49,7 @@ class BriefingService:
         )
 
         return Briefing(
-            repo=repo_name,
+            repo_name=repo_name,
             project_name=project_name,
             issues_by_state=grouped,
             total_open=len(issues),

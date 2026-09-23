@@ -80,7 +80,7 @@ class TestWorkspacePinning:
 
     def test_workspace_ids_lists_everything_the_token_reaches(self) -> None:
         provider, _ = _provider({"team": _TEAM_PAYLOAD})
-        assert provider.workspace_ids() == [WORKSPACE, "ws-2"]
+        assert provider.reachable_workspace_ids() == [WORKSPACE, "ws-2"]
 
     def test_list_workspaces_carries_names_for_pm_init(self) -> None:
         provider, _ = _provider({"team": _TEAM_PAYLOAD})

@@ -1,14 +1,14 @@
 """Value objects binding a repo to a board, and a credential to a workspace.
 
-`PmFile` is the shape `<repo>/.pm.toml` parses into; `Profile` is the shape one
-named entry of `~/.claude/pm/credentials.toml` parses into. Both live here
-rather than next to the parsers that build them, so `application/scope.py` and
-the other consumers depend on a plain value object instead of the file-reading
-code that produced it.
+`RepoBinding` is the shape `<repo>/.pm.toml` parses into; `CredentialProfile` is
+the shape one named entry of `~/.claude/pm/credentials.toml` parses into. Both
+live here rather than next to the parsers that build them, so
+`application/scope.py` and the other consumers depend on a plain value object
+instead of the file-reading code that produced it.
 
 `PM_FILE_VERSION` lives here, not with the `.pm.toml` parser, because
-`PmFile.version` defaults to it and domain code must not import infrastructure.
-The parser imports it back from here instead.
+`RepoBinding.version` defaults to it and domain code must not import
+infrastructure. The parser imports it back from here instead.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..exceptions import PMError
 
@@ -43,7 +43,7 @@ class ProviderType(StrEnum):
 
 
 @dataclass(frozen=True)
-class ListRef:
+class ScopeProject:
     """A writable destination: a ClickUp list or a Linear project."""
 
     id: str
@@ -51,7 +51,7 @@ class ListRef:
 
 
 @dataclass(frozen=True)
-class ScopeSpec:
+class WriteScope:
     """The allowlist. Nothing outside it can be written to.
 
     The `*_name` fields never resolve anything — the ids do. They exist so errors
@@ -60,22 +60,22 @@ class ScopeSpec:
     """
 
     workspace_id: str
-    space_id: str
-    lists: tuple[ListRef, ...]
+    team_id: str
+    projects: tuple[ScopeProject, ...]
     workspace_name: str = ""
-    space_name: str = ""
+    team_name: str = ""
 
     @property
-    def list_ids(self) -> frozenset[str]:
-        return frozenset(ref.id for ref in self.lists)
+    def project_ids(self) -> frozenset[str]:
+        return frozenset(ref.id for ref in self.projects)
 
     def describe(self) -> str:
-        names = ", ".join(ref.name or ref.id for ref in self.lists)
-        return f"{self.workspace_name or self.workspace_id} → {self.space_name or self.space_id} → {names}"
+        names = ", ".join(ref.name or ref.id for ref in self.projects)
+        return f"{self.workspace_name or self.workspace_id} → {self.team_name or self.team_id} → {names}"
 
 
 @dataclass(frozen=True)
-class Defaults:
+class IssueDefaults:
     """Applied to every issue created from this repo."""
 
     labels: tuple[str, ...] = ()
@@ -84,20 +84,35 @@ class Defaults:
 
 
 @dataclass(frozen=True)
-class PmFile:
+class RepoBinding:
     path: Path
     repo_root: Path
-    provider: ProviderType
-    profile: str
-    scope: ScopeSpec
-    defaults: Defaults = field(default_factory=Defaults)
+    provider_type: ProviderType
+    profile_name: str
+    scope: WriteScope
+    defaults: IssueDefaults = field(default_factory=IssueDefaults)
     version: int = PM_FILE_VERSION
 
 
-@dataclass(frozen=True)
-class Profile:
+class ProfileEntry(NamedTuple):
+    """A credential profile as it is written or discovered, before it is parsed
+    back into a `CredentialProfile`.
+
+    Named so callers stop threading an anonymous 4-tuple through
+    `write_profiles` and `find_legacy_tokens` — the position of `token` in a
+    bare tuple is not something a reader should have to remember.
+    """
+
     name: str
-    provider: ProviderType
+    provider_type: ProviderType
+    token: str
+    workspace_id: str | None
+
+
+@dataclass(frozen=True)
+class CredentialProfile:
+    name: str
+    provider_type: ProviderType
     token: str
     workspace_id: str | None = None
 
@@ -106,7 +121,7 @@ class Profile:
         tail = self.token[-4:] if len(self.token) > 8 else ""
         return {
             "name": self.name,
-            "provider": self.provider.value,
+            "provider": self.provider_type.value,
             "workspace_id": self.workspace_id,
             "token": f"…{tail}" if tail else "…",
         }

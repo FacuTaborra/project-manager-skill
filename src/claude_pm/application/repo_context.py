@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..domain.binding import PmFile, Profile, ProviderType, ScopeSpec
+from ..domain.binding import CredentialProfile, ProviderType, RepoBinding, WriteScope
 from ..exceptions import ConfigError
 from ..infrastructure.cache import cache_root
 from ..infrastructure.config_files.pm_file import load_pm_file
@@ -23,20 +23,20 @@ _SLUG_RE = re.compile(r"[^a-z0-9._-]+")
 
 
 @dataclass(frozen=True)
-class Config:
-    pm_file: PmFile
-    profile: Profile
+class RepoContext:
+    pm_file: RepoBinding
+    profile: CredentialProfile
     repo_name: str
     cache_path: Path
     fingerprint: str
     vault_path: Path | None = None
 
     @property
-    def provider_name(self) -> ProviderType:
-        return self.pm_file.provider
+    def provider_type(self) -> ProviderType:
+        return self.pm_file.provider_type
 
     @property
-    def scope(self) -> ScopeSpec:
+    def scope(self) -> WriteScope:
         return self.pm_file.scope
 
     @property
@@ -50,11 +50,11 @@ class Config:
         *,
         profile_override: str | None = None,
         start: Path | None = None,
-    ) -> Config:
+    ) -> RepoContext:
         pm_file = load_pm_file(start)
         profile = load_profile(
-            profile_override or pm_file.profile,
-            provider=pm_file.provider,
+            profile_override or pm_file.profile_name,
+            provider=pm_file.provider_type,
         )
         _check_provider_match(pm_file, profile)
 
@@ -79,11 +79,11 @@ class Config:
         return self.profile.token
 
 
-def _check_provider_match(pm_file: PmFile, profile: Profile) -> None:
-    if profile.provider is not pm_file.provider:
+def _check_provider_match(pm_file: RepoBinding, profile: CredentialProfile) -> None:
+    if profile.provider_type is not pm_file.provider_type:
         raise ConfigError(
-            f"{pm_file.path} wants provider {pm_file.provider.value!r} but profile "
-            f"{profile.name!r} is {profile.provider.value!r}. "
+            f"{pm_file.path} wants provider {pm_file.provider_type.value!r} but profile "
+            f"{profile.name!r} is {profile.provider_type.value!r}. "
             "One of the two is pointing at the wrong place."
         )
     declared = profile.workspace_id
@@ -94,7 +94,7 @@ def _check_provider_match(pm_file: PmFile, profile: Profile) -> None:
         )
 
 
-def _fingerprint(pm_file: PmFile, profile: Profile) -> str:
+def _fingerprint(pm_file: RepoBinding, profile: CredentialProfile) -> str:
     """Identity of a (repo, profile, board) triple.
 
     It is the cache filename, so changing any part of it lands on a different
@@ -105,11 +105,11 @@ def _fingerprint(pm_file: PmFile, profile: Profile) -> str:
     scope = pm_file.scope
     material = "|".join(
         [
-            pm_file.provider.value,
+            pm_file.provider_type.value,
             profile.name,
             scope.workspace_id,
-            scope.space_id,
-            ",".join(sorted(scope.list_ids)),
+            scope.team_id,
+            ",".join(sorted(scope.project_ids)),
             str(pm_file.repo_root.resolve()).lower(),
         ]
     )

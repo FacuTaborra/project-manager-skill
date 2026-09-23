@@ -21,7 +21,14 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from ...domain.binding import PM_FILE_VERSION, Defaults, ListRef, PmFile, ProviderType, ScopeSpec
+from ...domain.binding import (
+    PM_FILE_VERSION,
+    IssueDefaults,
+    ProviderType,
+    RepoBinding,
+    ScopeProject,
+    WriteScope,
+)
 from ...exceptions import ConfigError
 from ..repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
 from ._toml import reject_unknown, toml_string
@@ -40,7 +47,7 @@ _LIST_KEYS = {"id", "name"}
 _INIT_HINT = f"Run `pm init` in the repo root to write a {PM_FILE_NAME}."
 
 
-def load_pm_file(start: Path | None = None) -> PmFile:
+def load_pm_file(start: Path | None = None) -> RepoBinding:
     """Find and parse the nearest `.pm.toml`, or explain how to create one."""
     path = find_pm_file(start)
     if path is None:
@@ -56,7 +63,7 @@ def load_pm_file(start: Path | None = None) -> PmFile:
     return parse_pm_file(text, path=path)
 
 
-def parse_pm_file(text: str, *, path: Path) -> PmFile:
+def parse_pm_file(text: str, *, path: Path) -> RepoBinding:
     try:
         raw: dict[str, Any] = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
@@ -85,22 +92,22 @@ def parse_pm_file(text: str, *, path: Path) -> PmFile:
     defaults = _defaults(defaults_raw, path)
 
     repo_root = find_repo_root(path.parent) or path.parent
-    return PmFile(
+    return RepoBinding(
         path=path,
         repo_root=repo_root,
-        provider=provider,
-        profile=profile,
+        provider_type=provider,
+        profile_name=profile,
         scope=scope,
         defaults=defaults,
         version=version,
     )
 
 
-def _scope(raw: dict[str, Any], path: Path) -> ScopeSpec:
+def _scope(raw: dict[str, Any], path: Path) -> WriteScope:
     reject_unknown(raw, _SCOPE_KEYS, path, "[scope]")
 
     workspace_id = _str(raw.get("workspace_id"), "scope.workspace_id", path, required=True)
-    space_id = _str(raw.get("space_id"), "scope.space_id", path, required=True)
+    team_id = _str(raw.get("space_id"), "scope.space_id", path, required=True)
 
     lists_raw = raw.get("lists")
     if not isinstance(lists_raw, list) or not lists_raw:
@@ -109,7 +116,7 @@ def _scope(raw: dict[str, Any], path: Path) -> ScopeSpec:
             "Without at least one list there is nowhere to write."
         )
 
-    lists: list[ListRef] = []
+    projects: list[ScopeProject] = []
     seen: set[str] = set()
     for index, entry in enumerate(lists_raw):
         if not isinstance(entry, dict):
@@ -119,18 +126,18 @@ def _scope(raw: dict[str, Any], path: Path) -> ScopeSpec:
         if list_id in seen:
             raise ConfigError(f"{path}: [scope].lists has {list_id} twice.")
         seen.add(list_id)
-        lists.append(ListRef(id=list_id, name=_str(entry.get("name"), "", path) or ""))
+        projects.append(ScopeProject(id=list_id, name=_str(entry.get("name"), "", path) or ""))
 
-    return ScopeSpec(
+    return WriteScope(
         workspace_id=workspace_id,
-        space_id=space_id,
-        lists=tuple(lists),
+        team_id=team_id,
+        projects=tuple(projects),
         workspace_name=_str(raw.get("workspace_name"), "", path) or "",
-        space_name=_str(raw.get("space_name"), "", path) or "",
+        team_name=_str(raw.get("space_name"), "", path) or "",
     )
 
 
-def _defaults(raw: dict[str, Any], path: Path) -> Defaults:
+def _defaults(raw: dict[str, Any], path: Path) -> IssueDefaults:
     reject_unknown(raw, _DEFAULTS_KEYS, path, "[defaults]")
 
     labels_raw = raw.get("labels", [])
@@ -147,7 +154,7 @@ def _defaults(raw: dict[str, Any], path: Path) -> Defaults:
     if priority is not None and not 0 <= priority <= 4:
         raise ConfigError(f"{path}: [defaults].priority must be 0-4 (got {priority}).")
 
-    return Defaults(
+    return IssueDefaults(
         labels=tuple(labels),
         state=_str(raw.get("state"), "", path) or None,
         priority=priority,
@@ -178,31 +185,31 @@ def _int(value: Any, name: str, path: Path) -> int:
 
 def render_pm_toml(
     *,
-    provider: str,
-    profile: str,
-    scope: ScopeSpec,
-    defaults: Defaults | None = None,
+    provider_name: str,
+    profile_name: str,
+    scope: WriteScope,
+    defaults: IssueDefaults | None = None,
 ) -> str:
-    defaults = defaults or Defaults()
+    defaults = defaults or IssueDefaults()
     lines = [
         "# Which board this repo writes to. Committed — the whole team shares it.",
         "# Secrets live in ~/.claude/pm/credentials.toml, never here.",
         "",
         f"version  = {PM_FILE_VERSION}",
-        f"provider = {toml_string(provider)}",
-        f"profile  = {toml_string(profile)}",
+        f"provider = {toml_string(provider_name)}",
+        f"profile  = {toml_string(profile_name)}",
         "",
         "# The allowlist. Nothing outside it can be written to.",
         "[scope]",
         f"workspace_id   = {toml_string(scope.workspace_id)}",
         f"workspace_name = {toml_string(scope.workspace_name)}",
-        f"space_id       = {toml_string(scope.space_id)}",
-        f"space_name     = {toml_string(scope.space_name)}",
+        f"space_id       = {toml_string(scope.team_id)}",
+        f"space_name     = {toml_string(scope.team_name)}",
         "lists = [",
     ]
     lines.extend(
         f"  {{ id = {toml_string(ref.id)}, name = {toml_string(ref.name)} }},"
-        for ref in scope.lists
+        for ref in scope.projects
     )
     lines.append("]")
 

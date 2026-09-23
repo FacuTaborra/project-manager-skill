@@ -124,29 +124,31 @@ def _run_once(args: argparse.Namespace) -> int:
     repo_name = args.repo_name or detect_repo_name(repo_root)
     legacy = _legacy(args, repo_name)
 
-    provider_name = infer_provider(args.provider, args.profile, legacy.provider if legacy else None)
+    provider_name = infer_provider(
+        args.provider, args.profile, legacy.provider_name if legacy else None
+    )
     profile = load_profile(args.profile, provider=provider_name)
-    if profile.provider is not provider_name:
+    if profile.provider_type is not provider_name:
         raise PMError(
-            f"Profile {profile.name!r} is for {profile.provider.value}, "
+            f"Profile {profile.name!r} is for {profile.provider_type.value}, "
             f"but this repo wants {provider_name.value}."
         )
 
     def make_provider(workspace_id: str | None) -> IssueProvider:
-        return get_provider(provider_name, api_key=profile.token, workspace_id=workspace_id)
+        return get_provider(provider_name, token=profile.token, workspace_id=workspace_id)
 
     scope = build_scope(
         make_provider,
         workspace_id=args.workspace_id or profile.workspace_id,
         space_id=args.space_id,
-        space_name=None if args.space_id else (legacy.space if legacy else None),
+        space_name=None if args.space_id else (legacy.team_name if legacy else None),
         list_ids=args.list_id or None,
-        list_names=None if args.list_id else (list(legacy.projects) if legacy else None),
+        list_names=None if args.list_id else (list(legacy.project_names) if legacy else None),
     )
 
     rendered = render_pm_toml(
-        provider=provider_name.value,
-        profile=profile.name,
+        provider_name=provider_name.value,
+        profile_name=profile.name,
         scope=scope,
         defaults=defaults_from_legacy(legacy),
     )

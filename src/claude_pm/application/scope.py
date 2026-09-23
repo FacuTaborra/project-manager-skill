@@ -19,12 +19,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from ..domain.binding import Defaults, ScopeSpec
+from ..domain.binding import IssueDefaults, WriteScope
 from ..domain.models import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
 from ..domain.ports import DocProvider, IssueProvider
 from ..exceptions import NeedsChoice, PMError, ScopeViolation
 from ..infrastructure.cache import Cache
-from .repo_context import Config
+from .repo_context import RepoContext
 
 
 @dataclass(frozen=True)
@@ -54,9 +54,9 @@ T = TypeVar("T")
 @dataclass
 class ScopeGuard:
     provider: IssueProvider
-    scope: ScopeSpec
+    scope: WriteScope
     cache: Cache
-    defaults: Defaults = field(default_factory=Defaults)
+    defaults: IssueDefaults = field(default_factory=IssueDefaults)
     dry_run: bool = False
     allow_structural: bool = False
     _owners: dict[str, tuple[str | None, str]] = field(default_factory=dict, init=False)
@@ -77,7 +77,7 @@ class ScopeGuard:
                     f"{action}: {issue_id} belongs to no project, so this repo's scope "
                     f"({self.scope.describe()}) cannot cover it. Refusing to touch it."
                 )
-            if owner_id not in self.scope.list_ids:
+            if owner_id not in self.scope.project_ids:
                 raise ScopeViolation(
                     f"{action}: {issue_id} lives in {owner_name or owner_id}, outside this "
                     f"repo's scope ({self.scope.describe()}). Refusing to touch it."
@@ -85,18 +85,18 @@ class ScopeGuard:
             return owner_id
 
         if list_id is None:
-            if len(self.scope.lists) == 1:
-                return self.scope.lists[0].id
+            if len(self.scope.projects) == 1:
+                return self.scope.projects[0].id
             raise NeedsChoice(
                 "This repo has several lists in scope. Re-run with --project-id <ID>.",
                 {
                     "action": "choose-project",
-                    "projects": [{"id": ref.id, "name": ref.name} for ref in self.scope.lists],
+                    "projects": [{"id": ref.id, "name": ref.name} for ref in self.scope.projects],
                 },
             )
 
-        if list_id not in self.scope.list_ids:
-            allowed = ", ".join(f"{r.name or r.id} ({r.id})" for r in self.scope.lists)
+        if list_id not in self.scope.project_ids:
+            allowed = ", ".join(f"{r.name or r.id} ({r.id})" for r in self.scope.projects)
             raise ScopeViolation(
                 f"{action}: {list_id} is not in this repo's scope. Allowed: {allowed}. "
                 f"If the board really changed, re-run `pm init --force`."
@@ -155,12 +155,12 @@ class ScopeGuard:
         return self.provider
 
     def _describe(self, list_id: str | None) -> str:
-        name = self.cache.list_name(list_id or "") if list_id else None
+        name = self.cache.project_name(list_id or "") if list_id else None
         if not name and list_id:
-            name = next((r.name for r in self.scope.lists if r.id == list_id), None)
+            name = next((r.name for r in self.scope.projects if r.id == list_id), None)
         tail = name or list_id or "(workspace)"
         head = self.scope.workspace_name or self.scope.workspace_id
-        middle = self.scope.space_name or self.scope.space_id
+        middle = self.scope.team_name or self.scope.team_id
         return f"{head} → {middle} → {tail}"
 
     # -- writes --------------------------------------------------------------
@@ -186,7 +186,7 @@ class ScopeGuard:
             title=title,
             description=description,
             project_id=target,
-            team_id=self.scope.space_id,
+            team_id=self.scope.team_id,
             state_id=self.resolve_state_id(state_name),
             priority=effective_priority,
             assignee_id=self.resolve_assignee_id(assignee_email),
@@ -293,8 +293,8 @@ class ScopeGuard:
         return self._mutate(
             "create-project",
             target=None,
-            payload={"name": name, "space_id": self.scope.space_id},
-            call=lambda: self.provider.create_project(name, self.scope.space_id),
+            payload={"name": name, "space_id": self.scope.team_id},
+            call=lambda: self.provider.create_project(name, self.scope.team_id),
         )
 
     def create_space(self, name: str) -> Team | DryRun:
@@ -326,10 +326,10 @@ class ScopeGuard:
     def resolve_state_id(self, state_name: str | None) -> str | None:
         if not state_name:
             return None
-        for name, state_id in self.cache.state_ids.items():
+        for name, state_id in self.cache.state_id_by_name.items():
             if name.lower() == state_name.lower():
                 return state_id
-        available = ", ".join(self.cache.state_ids) or "(none cached)"
+        available = ", ".join(self.cache.state_id_by_name) or "(none cached)"
         raise PMError(f"State {state_name!r} not found. Available: {available}.")
 
     def resolve_assignee_id(self, email: str | None) -> str | None:
@@ -346,7 +346,7 @@ class ScopeGuard:
         available = {lbl["name"].lower(): lbl["id"] for lbl in self.cache.labels}
         if not available:
             available = {
-                lbl.name.lower(): lbl.id for lbl in self.provider.list_labels(self.scope.space_id)
+                lbl.name.lower(): lbl.id for lbl in self.provider.list_labels(self.scope.team_id)
             }
         resolved: list[str] = []
         for name in names:
@@ -362,7 +362,7 @@ class ScopeGuard:
         return tuple(resolved)
 
 
-def verify_workspace_pin(config: Config, provider: IssueProvider) -> None:
+def verify_workspace_pin(config: RepoContext, provider: IssueProvider) -> None:
     """Check the token reaches the declared workspace, before anything else does.
 
     Called ahead of cache refresh rather than after it: every other request is
@@ -371,7 +371,7 @@ def verify_workspace_pin(config: Config, provider: IssueProvider) -> None:
     profile is wrong.
     """
     declared = config.scope.workspace_id
-    reachable = provider.workspace_ids()
+    reachable = provider.reachable_workspace_ids()
     if declared not in reachable:
         raise ScopeViolation(
             f"The token for profile {config.profile.name!r} cannot reach workspace "
@@ -382,7 +382,7 @@ def verify_workspace_pin(config: Config, provider: IssueProvider) -> None:
 
 
 def build_guard(
-    config: Config,
+    config: RepoContext,
     provider: IssueProvider,
     cache: Cache,
     *,

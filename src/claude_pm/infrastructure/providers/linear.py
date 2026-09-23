@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...domain.models import Issue, IssueDraft, IssueUpdate, Label, Project, State, Team, User
+from ...domain.models import (
+    Issue,
+    IssueDraft,
+    IssueUpdate,
+    Label,
+    Project,
+    State,
+    Team,
+    User,
+    Workspace,
+)
 from ...exceptions import ProviderError
 from ._http import HttpClient
 
@@ -20,14 +30,14 @@ class LinearProvider:
 
     def __init__(
         self,
-        api_key: str,
+        token: str,
         *,
         workspace_id: str | None = None,
         http: HttpClient | None = None,
     ) -> None:
         self._http = http or HttpClient(
             url=LINEAR_API_URL,
-            headers={"Authorization": api_key},
+            headers={"Authorization": token},
         )
         # Linear routes by team/project, so the pin is never part of a URL here.
         # It is accepted anyway so the guard can verify it the same way for both
@@ -53,16 +63,16 @@ class LinearProvider:
             raise ProviderError("viewer.email missing in Linear response")
         return email
 
-    def workspace_ids(self) -> list[str]:
-        return [team.id for team in self.list_workspaces()]
+    def reachable_workspace_ids(self) -> list[str]:
+        return [workspace.id for workspace in self.list_workspaces()]
 
-    def list_workspaces(self) -> list[Team]:
+    def list_workspaces(self) -> list[Workspace]:
         """Linear has exactly one organization per token."""
         data = self._query("{ organization { id name urlKey } }")
         org = data.get("organization") or {}
         if not org.get("id"):
             raise ProviderError("organization.id missing in Linear response")
-        return [Team(id=org["id"], name=org.get("name", ""), key=org.get("urlKey", ""))]
+        return [Workspace(id=org["id"], name=org.get("name", ""))]
 
     def list_teams(self) -> list[Team]:
         data = self._query("{ teams { nodes { id name key } } }")
@@ -93,7 +103,7 @@ class LinearProvider:
                 if team_id not in team_ids:
                     continue
             result.append(
-                Project(id=n["id"], name=n["name"], state=n.get("state"), url=n.get("url"))
+                Project(id=n["id"], name=n["name"], status_text=n.get("state"), url=n.get("url"))
             )
         return result
 

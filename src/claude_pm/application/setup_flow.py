@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from ..domain.ports import IssueProvider
 from ..exceptions import PMError
 from ..infrastructure.cache import Cache, CacheRepository
-from .repo_context import Config
+from .repo_context import RepoContext
 
 
 @dataclass
@@ -24,7 +24,7 @@ class SetupResult:
 
 class SetupService:
     def __init__(
-        self, provider: IssueProvider, cache_repo: CacheRepository, config: Config
+        self, provider: IssueProvider, cache_repo: CacheRepository, config: RepoContext
     ) -> None:
         self.provider = provider
         self.cache_repo = cache_repo
@@ -39,22 +39,22 @@ class SetupService:
         warnings: list[str] = []
 
         spaces = self.provider.list_teams()
-        space = next((s for s in spaces if s.id == scope.space_id), None)
+        space = next((s for s in spaces if s.id == scope.team_id), None)
         if space is None:
             available = ", ".join(f"{s.name} ({s.id})" for s in spaces) or "(none)"
             raise PMError(
-                f"Space {scope.space_id} declared in {self.config.pm_file.path} does not exist "
+                f"Space {scope.team_id} declared in {self.config.pm_file.path} does not exist "
                 f"in this workspace. Available: {available}. Re-run `pm init --force`."
             )
-        if scope.space_name and space.name.lower() != scope.space_name.lower():
+        if scope.team_name and space.name.lower() != scope.team_name.lower():
             warnings.append(
-                f"Space {scope.space_id} is now named {space.name!r}, "
-                f"but {self.config.pm_file.path} says {scope.space_name!r}."
+                f"Space {scope.team_id} is now named {space.name!r}, "
+                f"but {self.config.pm_file.path} says {scope.team_name!r}."
             )
 
-        projects = {p.id: p for p in self.provider.list_projects(scope.space_id)}
+        projects = {p.id: p for p in self.provider.list_projects(scope.team_id)}
         resolved: list[dict[str, str]] = []
-        for ref in scope.lists:
+        for ref in scope.projects:
             project = projects.get(ref.id)
             if project is None:
                 available = ", ".join(f"{p.name} ({p.id})" for p in projects.values()) or "(none)"
@@ -70,9 +70,9 @@ class SetupService:
                 )
             resolved.append({"id": project.id, "name": project.name})
 
-        states = {s.name: s.id for s in self.provider.list_states(scope.space_id)}
+        states = {s.name: s.id for s in self.provider.list_states(scope.team_id)}
         labels = [
-            {"id": lbl.id, "name": lbl.name} for lbl in self.provider.list_labels(scope.space_id)
+            {"id": lbl.id, "name": lbl.name} for lbl in self.provider.list_labels(scope.team_id)
         ]
 
         written = self.cache_repo.write(

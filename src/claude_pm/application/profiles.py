@@ -17,8 +17,8 @@ import os
 import re
 from pathlib import Path
 
-from ..domain.binding import Profile, ProviderType
-from ..domain.models import Team
+from ..domain.binding import CredentialProfile, ProfileEntry, ProviderType
+from ..domain.models import Workspace
 from ..exceptions import ConfigError, NeedsChoice, PMError, ProviderError
 from ..infrastructure.config_files.credentials_store import (
     credentials_path,
@@ -37,20 +37,20 @@ _SETUP_HINT = (
 )
 
 
-def verify_token(provider: ProviderType, token: str) -> tuple[str, list[Team]]:
+def verify_token(provider: ProviderType, token: str) -> tuple[str, list[Workspace]]:
     """Prove the token works before it is written anywhere.
 
     A mistyped token fails here, next to the paste that caused it, instead of
     three commands later where the error no longer looks like its cause.
     """
-    probe = get_provider(provider, api_key=token)
+    probe = get_provider(provider, token=token)
     try:
         return probe.viewer_email(), probe.list_workspaces()
     except ProviderError as exc:
         raise PMError(f"That token does not work: {exc}") from exc
 
 
-def pick_workspace(declared: str | None, reachable: list[Team]) -> str | None:
+def pick_workspace(declared: str | None, reachable: list[Workspace]) -> str | None:
     """Pin the profile only when there is no doubt; `pm init` asks otherwise."""
     if declared:
         if not any(w.id == declared for w in reachable):
@@ -81,9 +81,9 @@ def infer_provider(
         if named is None:
             available = ", ".join(p.name for p in profiles) or "(none)"
             raise PMError(f"Profile {profile!r} not found. Available: {available}.")
-        return named.provider
+        return named.provider_type
 
-    providers = {p.provider for p in profiles}
+    providers = {p.provider_type for p in profiles}
     if len(providers) == 1:
         return providers.pop()
     if not providers:
@@ -108,7 +108,7 @@ def load_profile(
     *,
     provider: ProviderType | None = None,
     path: Path | None = None,
-) -> Profile:
+) -> CredentialProfile:
     """Resolve one profile by name.
 
     `PM_TOKEN` short-circuits the file entirely, for CI. Otherwise the name comes
@@ -121,9 +121,9 @@ def load_profile(
     if env_token:
         if provider is None:
             raise ConfigError(f"{_ENV_TOKEN} is set but the provider is unknown.")
-        return Profile(
+        return CredentialProfile(
             name=wanted or "env",
-            provider=provider,
+            provider_type=provider,
             token=env_token,
             workspace_id=os.environ.get("PM_WORKSPACE_ID"),
         )
@@ -143,9 +143,9 @@ def load_profile(
         return match
 
     # Offering a Linear profile for a ClickUp repo is not a choice, it is noise.
-    candidates = [p for p in profiles if p.provider is provider] if provider else profiles
+    candidates = [p for p in profiles if p.provider_type is provider] if provider else profiles
     if not candidates:
-        available = ", ".join(f"{p.name} ({p.provider.value})" for p in profiles)
+        available = ", ".join(f"{p.name} ({p.provider_type.value})" for p in profiles)
         raise ConfigError(
             f"No {provider.value if provider else ''} profile in "
             f"{path or credentials_path()}. Available: {available}.\n"
@@ -181,4 +181,4 @@ def save_profile(
         raise PMError(
             f"Profile {name!r} already exists in {target}. Re-run with --force to replace it."
         )
-    write_profiles(target, [(name, provider, token, workspace_id)], replace=force)
+    write_profiles(target, [ProfileEntry(name, provider, token, workspace_id)], replace=force)

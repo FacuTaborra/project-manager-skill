@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from ...domain.binding import Profile, ProviderType
+from ...domain.binding import CredentialProfile, ProfileEntry, ProviderType
 from ...exceptions import ConfigError
 from ._toml import reject_unknown, toml_string
 
@@ -39,7 +39,7 @@ def credentials_path() -> Path:
     return Path(env).expanduser() if env else DEFAULT_CREDENTIALS_PATH
 
 
-def list_profiles(path: Path | None = None) -> list[Profile]:
+def list_profiles(path: Path | None = None) -> list[CredentialProfile]:
     """Every profile in the credentials file, in declaration order."""
     target = path or credentials_path()
     if not target.is_file():
@@ -64,12 +64,12 @@ def list_profiles(path: Path | None = None) -> list[Profile]:
     return [_profile(name, entry, target) for name, entry in table.items()]
 
 
-def _profile(name: str, raw: Any, path: Path) -> Profile:
+def _profile(name: str, raw: Any, path: Path) -> CredentialProfile:
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: [profiles.{name}] must be a table.")
     reject_unknown(raw, _PROFILE_KEYS, path, f"[profiles.{name}]")
 
-    provider = ProviderType.parse(
+    provider_type = ProviderType.parse(
         raw.get("provider"), where=f"{path}: [profiles.{name}]: ", error=ConfigError
     )
 
@@ -81,9 +81,9 @@ def _profile(name: str, raw: Any, path: Path) -> Profile:
     if workspace_id is not None and not isinstance(workspace_id, str):
         raise ConfigError(f"{path}: [profiles.{name}].workspace_id must be a string.")
 
-    return Profile(
+    return CredentialProfile(
         name=name,
-        provider=provider,
+        provider_type=provider_type,
         token=token.strip(),
         workspace_id=workspace_id or None,
     )
@@ -91,7 +91,7 @@ def _profile(name: str, raw: Any, path: Path) -> Profile:
 
 def write_profiles(
     path: Path,
-    entries: Sequence[tuple[str, ProviderType, str, str | None]],
+    entries: Sequence[ProfileEntry],
     *,
     replace: bool = False,
 ) -> None:
@@ -109,10 +109,10 @@ def write_profiles(
         else f"version = {CREDENTIALS_VERSION}\n"
     )
     blocks = []
-    for name, provider, token, workspace_id in entries:
+    for name, provider_type, token, workspace_id in entries:
         block = (
             f"\n[profiles.{name}]\n"
-            f"provider     = {toml_string(provider.value)}\n"
+            f"provider     = {toml_string(provider_type.value)}\n"
             f"token        = {toml_string(token)}\n"
         )
         if workspace_id:
@@ -139,10 +139,10 @@ def _without(text: str, names: set[str]) -> str:
     return "\n".join(kept).rstrip() + "\n"
 
 
-def find_legacy_tokens() -> list[tuple[str, ProviderType, str, str | None]]:
+def find_legacy_tokens() -> list[ProfileEntry]:
     """Discover tokens left by the old `~/.claude/secrets/*.env` layout, for `pm creds import`."""
     return [
-        (f"{provider.value}-default", provider, token, None)
+        ProfileEntry(f"{provider.value}-default", provider, token, None)
         for provider, (secret_file, key) in LEGACY_SECRETS.items()
         if (token := _read_env_key(secret_file, key))
     ]

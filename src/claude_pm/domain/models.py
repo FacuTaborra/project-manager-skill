@@ -13,10 +13,16 @@ class Team:
 
 
 @dataclass(frozen=True)
+class Workspace:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
 class Project:
     id: str
     name: str
-    state: str | None = None
+    status_text: str | None = None
     url: str | None = None
 
 
@@ -81,7 +87,7 @@ class Doc:
 
 @dataclass(frozen=True)
 class Briefing:
-    repo: str
+    repo_name: str
     project_name: str
     issues_by_state: dict[str, list[Issue]] = field(default_factory=dict)
     total_open: int = 0

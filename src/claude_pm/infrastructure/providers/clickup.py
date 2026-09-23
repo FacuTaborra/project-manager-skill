@@ -13,7 +13,18 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
-from ...domain.models import Doc, Issue, IssueDraft, IssueUpdate, Label, Project, State, Team, User
+from ...domain.models import (
+    Doc,
+    Issue,
+    IssueDraft,
+    IssueUpdate,
+    Label,
+    Project,
+    State,
+    Team,
+    User,
+    Workspace,
+)
 from ...exceptions import ProviderError
 from ._http import HttpClient
 
@@ -33,14 +44,14 @@ class ClickUpProvider:
 
     def __init__(
         self,
-        api_key: str,
+        token: str,
         *,
         workspace_id: str | None = None,
         http: HttpClient | None = None,
     ) -> None:
         self._http = http or HttpClient(
             url=CLICKUP_API_BASE,
-            headers={"Authorization": api_key},
+            headers={"Authorization": token},
         )
         # Pinned from config, never discovered. Picking `teams[0]` meant the board
         # you wrote to depended on the order ClickUp happened to return.
@@ -71,13 +82,13 @@ class ClickUpProvider:
             )
         return self._workspace_id
 
-    def workspace_ids(self) -> list[str]:
+    def reachable_workspace_ids(self) -> list[str]:
         return [str(t["id"]) for t in self._get("team").get("teams") or []]
 
-    def list_workspaces(self) -> list[Team]:
+    def list_workspaces(self) -> list[Workspace]:
         """Discovery only — `pm init` uses it to let the user pick."""
         teams = self._get("team").get("teams") or []
-        return [Team(id=str(t["id"]), name=t.get("name", ""), key=str(t["id"])[:8]) for t in teams]
+        return [Workspace(id=str(t["id"]), name=t.get("name", "")) for t in teams]
 
     # -- IssueProvider methods -----------------------------------------------
 

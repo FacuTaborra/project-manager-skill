@@ -7,7 +7,7 @@ from __future__ import annotations
 import sys
 
 from ..domain.binding import ProviderType
-from ..domain.models import Team
+from ..domain.models import Workspace
 from ..infrastructure.config_files.credentials_store import credentials_path
 from ._prompt import Choice, choose
 
@@ -25,7 +25,7 @@ def ask_provider() -> ProviderType:
     return ProviderType(picked[0])
 
 
-def report(name: str, email: str, reachable: list[Team], workspace_id: str | None) -> None:
+def report(name: str, email: str, reachable: list[Workspace], workspace_id: str | None) -> None:
     print(f"  ✓ token valid — authenticated as {email}", file=sys.stderr)
     print(
         f"  ✓ reaches {len(reachable)} workspace(s): "

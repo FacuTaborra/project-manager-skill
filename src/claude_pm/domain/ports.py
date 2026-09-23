@@ -4,7 +4,18 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from .models import Doc, Issue, IssueDraft, IssueUpdate, Label, Project, State, Team, User
+from .models import (
+    Doc,
+    Issue,
+    IssueDraft,
+    IssueUpdate,
+    Label,
+    Project,
+    State,
+    Team,
+    User,
+    Workspace,
+)
 
 
 class IssueProvider(Protocol):
@@ -19,7 +30,7 @@ class IssueProvider(Protocol):
         """Return the email of the authenticated user (used by `doctor`)."""
         ...
 
-    def workspace_ids(self) -> list[str]:
+    def reachable_workspace_ids(self) -> list[str]:
         """Workspaces/organizations this token can reach.
 
         Linear returns its single `organization.id`, ClickUp every team id. The
@@ -28,7 +39,7 @@ class IssueProvider(Protocol):
         """
         ...
 
-    def list_workspaces(self) -> list[Team]:
+    def list_workspaces(self) -> list[Workspace]:
         """Workspaces with their names — discovery only, for `pm init`."""
         ...
 

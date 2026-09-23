@@ -105,7 +105,7 @@ def _profile_flag() -> str:
         profiles = list_profiles()
     except PMError:
         return ""
-    if len({p.provider for p in profiles}) <= 1:
+    if len({p.provider_type for p in profiles}) <= 1:
         return ""
     names = " | ".join(p.name for p in profiles)
     return f" --profile <{names}>"

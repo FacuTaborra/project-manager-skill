@@ -28,10 +28,10 @@ def _ago(days: int) -> str:
 def _complete(**overrides) -> Cache:
     base = dict(
         fingerprint=FINGERPRINT,
-        space_id="90130521234",
-        space_name="4plus",
-        lists=tuple(LISTS),
-        state_ids=STATES,
+        team_id="90130521234",
+        team_name="4plus",
+        projects=tuple(LISTS),
+        state_id_by_name=STATES,
         last_refresh=_ago(1),
     )
     base.update(overrides)
@@ -60,7 +60,7 @@ class TestValidity:
         assert not _complete().is_valid_for("ffffffff")
 
     def test_incomplete_is_not_valid(self) -> None:
-        assert not _complete(state_ids={}).is_valid_for(FINGERPRINT)
+        assert not _complete(state_id_by_name={}).is_valid_for(FINGERPRINT)
 
     def test_stale_is_not_valid(self) -> None:
         assert not _complete(last_refresh=_ago(CACHE_TTL_DAYS + 1)).is_valid_for(FINGERPRINT)
@@ -68,10 +68,10 @@ class TestValidity:
 
 class TestLookups:
     def test_list_name_by_id(self) -> None:
-        assert _complete().list_name("901305678901") == "modulo-energia"
+        assert _complete().project_name("901305678901") == "modulo-energia"
 
     def test_unknown_list_id(self) -> None:
-        assert _complete().list_name("nope") is None
+        assert _complete().project_name("nope") is None
 
     def test_label_names(self) -> None:
         assert _complete(labels=tuple(LABELS)).label_names() == ("alerts-api",)
@@ -87,10 +87,10 @@ class TestJsonFileRepository:
             state_ids=STATES,
             labels=LABELS,
         )
-        assert written.space_id == "90130521234"
+        assert written.team_id == "90130521234"
         loaded = repo.load()
-        assert loaded.lists == tuple(LISTS)
-        assert loaded.state_ids == STATES
+        assert loaded.projects == tuple(LISTS)
+        assert loaded.state_id_by_name == STATES
         assert loaded.labels == tuple(LABELS)
         assert loaded.fingerprint == FINGERPRINT
 
@@ -154,7 +154,7 @@ class TestJsonFileRepository:
             ),
             encoding="utf-8",
         )
-        assert JsonFileCacheRepository(path, FINGERPRINT).load().lists == (
+        assert JsonFileCacheRepository(path, FINGERPRINT).load().projects == (
             {"id": "ok", "name": "fine"},
         )
 
@@ -167,7 +167,7 @@ class TestInMemoryRepository:
         repo = InMemoryCacheRepository()
         repo.write(space_id="s", space_name="n", lists=LISTS, state_ids=STATES, labels=LABELS)
         loaded = repo.load()
-        assert loaded.space_id == "s"
+        assert loaded.team_id == "s"
         assert loaded.labels == tuple(LABELS)
 
 

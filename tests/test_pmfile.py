@@ -48,12 +48,12 @@ def _parse(text: str, tmp_path: Path):
 class TestValid:
     def test_reads_every_field(self, tmp_path: Path) -> None:
         pm = _parse(VALID, tmp_path)
-        assert pm.provider is ProviderType.CLICKUP
-        assert pm.profile == "4plus"
+        assert pm.provider_type is ProviderType.CLICKUP
+        assert pm.profile_name == "4plus"
         assert pm.scope.workspace_id == "9013377000"
-        assert pm.scope.space_name == "4plus"
-        assert pm.scope.lists[0].name == "modulo-energia"
-        assert pm.scope.list_ids == {"901305678901"}
+        assert pm.scope.team_name == "4plus"
+        assert pm.scope.projects[0].name == "modulo-energia"
+        assert pm.scope.project_ids == {"901305678901"}
         assert pm.defaults.labels == ("alerts-api",)
         assert pm.defaults.state == "Backlog"
         assert pm.defaults.priority == 3

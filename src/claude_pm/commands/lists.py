@@ -28,29 +28,29 @@ def run_list_teams(args: argparse.Namespace) -> int:
 def run_list_states(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
     cache = build_setup(config, provider).verify().cache
-    print_json({"states": cache.state_ids})
+    print_json({"states": cache.state_id_by_name})
     return EXIT_OK
 
 
 def run_list_labels(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    labels = provider.list_labels(config.scope.space_id)
+    labels = provider.list_labels(config.scope.team_id)
     print_json({"labels": [{"id": lbl.id, "name": lbl.name} for lbl in labels]})
     return EXIT_OK
 
 
 def run_list_projects(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    projects = provider.list_projects(getattr(args, "team_id", None) or config.scope.space_id)
+    projects = provider.list_projects(getattr(args, "team_id", None) or config.scope.team_id)
     print_json(
         {
             "projects": [
                 {
                     "id": p.id,
                     "name": p.name,
-                    "state": p.state,
+                    "state": p.status_text,
                     "url": p.url,
-                    "in_scope": p.id in config.scope.list_ids,
+                    "in_scope": p.id in config.scope.project_ids,
                 }
                 for p in projects
             ]

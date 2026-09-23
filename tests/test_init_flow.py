@@ -15,7 +15,7 @@ from src.claude_pm.application.init_flow import (
     resolve_space,
     resolve_workspace,
 )
-from src.claude_pm.domain.binding import Defaults, ListRef, ScopeSpec
+from src.claude_pm.domain.binding import IssueDefaults, ScopeProject, WriteScope
 from src.claude_pm.domain.models import Project, Team
 from src.claude_pm.exceptions import NeedsChoice, PMError
 from src.claude_pm.infrastructure.config_files.pm_file import parse_pm_file, render_pm_toml
@@ -63,16 +63,16 @@ class TestLegacyFile:
         path.write_text(LEGACY, encoding="utf-8")
         section = read_legacy_section(path, "Alerts-API")
         assert section is not None
-        assert section.space == "4plus"
-        assert section.projects == ("modulo-energia",)
-        assert section.label == "alerts-api"
+        assert section.team_name == "4plus"
+        assert section.project_names == ("modulo-energia",)
+        assert section.label_name == "alerts-api"
 
     def test_comma_separated_projects_become_a_tuple(self, tmp_path: Path) -> None:
         path = tmp_path / "projects.pm"
         path.write_text(LEGACY, encoding="utf-8")
         section = read_legacy_section(path, "cahpsa-etl")
         assert section is not None
-        assert section.projects == ("Melvin", "Nutrex", "Witwot")
+        assert section.project_names == ("Melvin", "Nutrex", "Witwot")
 
     def test_unknown_repo_is_none(self, tmp_path: Path) -> None:
         path = tmp_path / "projects.pm"
@@ -87,12 +87,12 @@ class TestLegacyFile:
         path = tmp_path / "projects.pm"
         path.write_text(LEGACY, encoding="utf-8")
         section = read_legacy_section(path, "alerts-api")
-        assert defaults_from_legacy(section) == Defaults(labels=("alerts-api",))
+        assert defaults_from_legacy(section) == IssueDefaults(labels=("alerts-api",))
 
     def test_no_label_means_no_defaults(self, tmp_path: Path) -> None:
         path = tmp_path / "projects.pm"
         path.write_text(LEGACY, encoding="utf-8")
-        assert defaults_from_legacy(read_legacy_section(path, "cahpsa-etl")) == Defaults()
+        assert defaults_from_legacy(read_legacy_section(path, "cahpsa-etl")) == IssueDefaults()
 
 
 class TestResolution:
@@ -134,11 +134,11 @@ class TestResolution:
 
     def test_lists_by_legacy_names(self) -> None:
         refs = resolve_lists(FakeProvider(), "space-1", list_names=["modulo-energia"])
-        assert refs == (ListRef(id="list-1", name="modulo-energia"),)
+        assert refs == (ScopeProject(id="list-1", name="modulo-energia"),)
 
     def test_lists_by_id(self) -> None:
         refs = resolve_lists(FakeProvider(), "space-1", list_ids=["list-1"])
-        assert refs == (ListRef(id="list-1", name="modulo-energia"),)
+        assert refs == (ScopeProject(id="list-1", name="modulo-energia"),)
 
     def test_unknown_list_id_is_refused(self) -> None:
         with pytest.raises(PMError, match="not found in this space"):
@@ -159,8 +159,8 @@ class TestBuildScope:
             list_names=["modulo-energia"],
         )
         assert scope.workspace_id == "ws-1"
-        assert scope.space_id == "space-1"
-        assert scope.list_ids == {"list-1"}
+        assert scope.team_id == "space-1"
+        assert scope.project_ids == {"list-1"}
         assert scope.describe() == "Hemisphere → 4plus → modulo-energia"
 
     def test_the_provider_is_pinned_once_the_workspace_is_known(self) -> None:
@@ -178,52 +178,52 @@ class TestBuildScope:
 
 
 class TestRenderPmToml:
-    def _scope(self) -> ScopeSpec:
-        return ScopeSpec(
+    def _scope(self) -> WriteScope:
+        return WriteScope(
             workspace_id="ws-1",
             workspace_name="Hemisphere",
-            space_id="space-1",
-            space_name="4plus",
-            lists=(ListRef(id="list-1", name="modulo-energia"),),
+            team_id="space-1",
+            team_name="4plus",
+            projects=(ScopeProject(id="list-1", name="modulo-energia"),),
         )
 
     def test_what_it_writes_parses_back_identically(self) -> None:
         rendered = render_pm_toml(
-            provider="clickup",
-            profile="4plus",
+            provider_name="clickup",
+            profile_name="4plus",
             scope=self._scope(),
-            defaults=Defaults(labels=("alerts-api",), state="Backlog", priority=3),
+            defaults=IssueDefaults(labels=("alerts-api",), state="Backlog", priority=3),
         )
         parsed = parse_pm_file(rendered, path=Path("/repo/.pm.toml"))
-        assert parsed.provider.value == "clickup"
-        assert parsed.profile == "4plus"
+        assert parsed.provider_type.value == "clickup"
+        assert parsed.profile_name == "4plus"
         assert parsed.scope == self._scope()
-        assert parsed.defaults == Defaults(labels=("alerts-api",), state="Backlog", priority=3)
+        assert parsed.defaults == IssueDefaults(labels=("alerts-api",), state="Backlog", priority=3)
 
     def test_it_is_valid_toml(self) -> None:
-        rendered = render_pm_toml(provider="linear", profile="p", scope=self._scope())
+        rendered = render_pm_toml(provider_name="linear", profile_name="p", scope=self._scope())
         assert tomllib.loads(rendered)["provider"] == "linear"
 
     def test_the_defaults_table_is_omitted_when_empty(self) -> None:
-        rendered = render_pm_toml(provider="linear", profile="p", scope=self._scope())
+        rendered = render_pm_toml(provider_name="linear", profile_name="p", scope=self._scope())
         assert "[defaults]" not in rendered
 
     def test_quotes_in_names_are_escaped(self) -> None:
-        scope = ScopeSpec(
+        scope = WriteScope(
             workspace_id="ws",
-            space_id="sp",
-            space_name='the "main" space',
-            lists=(ListRef(id="l", name="a\\b"),),
+            team_id="sp",
+            team_name='the "main" space',
+            projects=(ScopeProject(id="l", name="a\\b"),),
         )
-        rendered = render_pm_toml(provider="linear", profile="p", scope=scope)
+        rendered = render_pm_toml(provider_name="linear", profile_name="p", scope=scope)
         assert tomllib.loads(rendered)["scope"]["space_name"] == 'the "main" space'
         assert tomllib.loads(rendered)["scope"]["lists"][0]["name"] == "a\\b"
 
     def test_several_lists_round_trip(self) -> None:
-        scope = ScopeSpec(
+        scope = WriteScope(
             workspace_id="ws",
-            space_id="sp",
-            lists=(ListRef(id="a", name="A"), ListRef(id="b", name="B")),
+            team_id="sp",
+            projects=(ScopeProject(id="a", name="A"), ScopeProject(id="b", name="B")),
         )
-        rendered = render_pm_toml(provider="clickup", profile="p", scope=scope)
-        assert parse_pm_file(rendered, path=Path("/x/.pm.toml")).scope.list_ids == {"a", "b"}
+        rendered = render_pm_toml(provider_name="clickup", profile_name="p", scope=scope)
+        assert parse_pm_file(rendered, path=Path("/x/.pm.toml")).scope.project_ids == {"a", "b"}

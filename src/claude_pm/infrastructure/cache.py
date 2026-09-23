@@ -41,10 +41,10 @@ class Cache:
     """Immutable snapshot of cached provider ids."""
 
     fingerprint: str | None = None
-    space_id: str | None = None
-    space_name: str | None = None
-    lists: tuple[dict[str, str], ...] = field(default_factory=tuple)
-    state_ids: dict[str, str] = field(default_factory=dict)
+    team_id: str | None = None
+    team_name: str | None = None
+    projects: tuple[dict[str, str], ...] = field(default_factory=tuple)
+    state_id_by_name: dict[str, str] = field(default_factory=dict)
     labels: tuple[dict[str, str], ...] = field(default_factory=tuple)
     last_refresh: str | None = None
 
@@ -58,13 +58,13 @@ class Cache:
         return (datetime.now(UTC) - last).days < CACHE_TTL_DAYS
 
     def is_complete(self) -> bool:
-        return bool(self.space_id and self.lists and self.state_ids)
+        return bool(self.team_id and self.projects and self.state_id_by_name)
 
     def is_valid_for(self, fingerprint: str) -> bool:
         return self.fingerprint == fingerprint and self.is_complete() and self.is_fresh()
 
-    def list_name(self, list_id: str) -> str | None:
-        return next((e["name"] for e in self.lists if e["id"] == list_id), None)
+    def project_name(self, list_id: str) -> str | None:
+        return next((e["name"] for e in self.projects if e["id"] == list_id), None)
 
     def label_names(self) -> tuple[str, ...]:
         return tuple(e["name"] for e in self.labels)
@@ -129,10 +129,10 @@ def _cache_from_dict(data: dict[str, Any]) -> Cache:
     raw_states = data.get("state_ids", {})
     return Cache(
         fingerprint=_opt_str(data.get("fingerprint")),
-        space_id=_opt_str(data.get("space_id")),
-        space_name=_opt_str(data.get("space_name")),
-        lists=_pairs(data.get("lists")),
-        state_ids=(
+        team_id=_opt_str(data.get("space_id")),
+        team_name=_opt_str(data.get("space_name")),
+        projects=_pairs(data.get("lists")),
+        state_id_by_name=(
             {str(k): str(v) for k, v in raw_states.items()} if isinstance(raw_states, dict) else {}
         ),
         labels=_pairs(data.get("labels")),
