@@ -98,7 +98,26 @@ cd mi-repo
 pm init
 ```
 
-`pm init` lista los spaces y las listas que tu token ve, y escribe el archivo. Si hay varias opciones, sale con exit 2 y te dice el flag con el que elegís (`--space-id`, `--list-id`).
+En una terminal, `pm init` levanta un wizard y te va preguntando: token (si todavía no tenés ninguno), workspace, y a qué lista escribe este repo.
+
+```
+$ pm init
+
+¿Qué workspace?
+  1) Urbs Data          90171079544
+  2) Hemisphere Brands  90131828277
+> 1
+
+¿A qué lista(s) escribe este repo? (números separados por coma, o 'todos')
+  1) 4plus                  901713796084
+  2) Cahpsa-Melvin          901713794559
+  3) Hemisphere-Automation  901713947493
+> 1
+```
+
+El token se lee sin eco, así que no queda en el scrollback.
+
+Cuando lo corre un script o un agente —sin terminal— no pregunta nada: sale con exit 2 y un payload JSON con las opciones, y se reintenta con el flag (`--workspace-id`, `--list-id`). `--no-input` fuerza ese modo.
 
 El resultado se ve así:
 

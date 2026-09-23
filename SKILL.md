@@ -39,6 +39,8 @@ If the repo has no `.pm.toml`, every command fails. Tell the user to run `pm ini
 
 If the user asks you to install or set up the tool, the same applies: run `pm doctor`, do what it says, run it again. Stop when it reports everything is ready. The one exception is `pm creds add`, which needs a token only the user can get from their browser — ask them for it, do not invent one.
 
+**Always pass `--no-input` to `pm init` and `pm creds add`.** Those commands prompt when they detect a terminal. You do not have one, so they should return exit 2 with a choice payload instead — but the flag makes that certain rather than inferred.
+
 ---
 
 ## Available subcommands

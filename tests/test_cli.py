@@ -100,6 +100,20 @@ class TestInit:
         assert _parse(["init"]).force is False
 
 
+class TestNoInput:
+    """The escape hatch that forces the machine protocol regardless of the terminal."""
+
+    def test_init_accepts_it(self) -> None:
+        assert _parse(["init", "--no-input"]).no_input is True
+
+    def test_creds_add_accepts_it(self) -> None:
+        assert _parse(["creds", "add", "--no-input"]).no_input is True
+
+    def test_it_defaults_to_off(self) -> None:
+        assert _parse(["init"]).no_input is False
+        assert _parse(["creds", "add"]).no_input is False
+
+
 class TestInstallSkill:
     def test_permission_consent_is_explicit(self) -> None:
         assert _parse(["install-skill"]).yes is False
@@ -124,9 +138,11 @@ class TestCreds:
         with pytest.raises(SystemExit):
             _parse(["creds"])
 
-    def test_add_requires_a_name_and_provider(self) -> None:
-        with pytest.raises(SystemExit):
-            _parse(["creds", "add", "--token", "t"])
+    def test_add_no_longer_demands_name_and_provider_up_front(self) -> None:
+        """They are prompted for in a terminal; --no-input turns them back into errors."""
+        args = _parse(["creds", "add", "--token", "t"])
+        assert args.name is None
+        assert args.provider is None
 
     def test_add_allows_omitting_the_token_for_the_env_var(self) -> None:
         assert _parse(["creds", "add", "--name", "n", "--provider", "clickup"]).token is None

@@ -90,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_init.add_argument("--force", action="store_true", help="Overwrite an existing .pm.toml.")
     p_init.add_argument("--dry-run", action="store_true", help="Print the TOML, write nothing.")
+    p_init.add_argument(
+        "--no-input",
+        action="store_true",
+        help="Never prompt; return exit 2 with a choice payload instead. For non-human callers.",
+    )
     p_init.set_defaults(func=init.run)
 
     p_creds = sub.add_parser("creds", help="Manage credential profiles.")
@@ -98,8 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_creds_add = creds_sub.add_parser(
         "add", help="Verify a token against the API and store it as a named profile."
     )
-    p_creds_add.add_argument("--name", required=True, help="Profile name, e.g. 4plus.")
-    p_creds_add.add_argument("--provider", required=True, help="linear | clickup.")
+    p_creds_add.add_argument("--name", default=None, help="Profile name, e.g. 4plus.")
+    p_creds_add.add_argument("--provider", default=None, help="linear | clickup.")
     p_creds_add.add_argument(
         "--token",
         default=None,
@@ -110,6 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_creds_add.add_argument("--force", action="store_true", help="Replace an existing profile.")
     p_creds_add.add_argument("--dry-run", action="store_true", help="Verify but do not write.")
+    p_creds_add.add_argument(
+        "--no-input",
+        action="store_true",
+        help="Never prompt; fail or return a choice payload instead. For non-human callers.",
+    )
     p_creds_add.set_defaults(func=creds.run_add)
 
     p_creds_list = creds_sub.add_parser("list", help="List profiles (tokens redacted).")

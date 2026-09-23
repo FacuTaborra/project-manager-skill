@@ -1,17 +1,23 @@
 """`init` — write this repo's `.pm.toml`.
 
-Discovery happens here so nobody has to hand-write ids. Ambiguity is reported as
-exit 2 with a choice payload rather than an interactive prompt: the usual caller
-is Claude, which cannot answer `input()`.
+Discovery happens here so nobody has to hand-write ids. Every ambiguity is
+reported as exit 2 with a choice payload, which the caller answers by re-running
+with a flag.
+
+That payload already carries the question and its options, so the interactive
+wizard is not a second implementation: it is the same run, answering its own
+exit 2 locally instead of returning it. Claude's path is untouched.
 """
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 from ..application.init_flow import build_scope, defaults_from_legacy, read_legacy_section
 from ..application.onboarding import next_step
+from ..application.prompt import Choice, ask, ask_secret, choose, is_interactive
 from ..application.toml_render import render_pm_toml
 from ..credentials import list_profiles, load_profile
 from ..domain.ports import IssueProvider
@@ -19,12 +25,85 @@ from ..enums import ProviderType
 from ..exceptions import EXIT_OK, NeedsChoice, PMError
 from ..infrastructure.providers._registry import get_provider
 from ..infrastructure.repo_detect import PM_FILE_NAME, detect_repo_name, find_repo_root
+from . import creds
 from ._helpers import print_json
 
 DEFAULT_LEGACY_PATH = Path.home() / ".claude" / "skills" / "pm" / "projects.pm"
 
+# action → (arg to set, question, key holding the options, multi-select)
+_QUESTIONS: dict[str, tuple[str, str, str, bool]] = {
+    "choose-provider": ("provider", "¿Qué tracker usa este repo?", "providers", False),
+    "choose-profile": ("profile", "¿Qué credencial usa este repo?", "profiles", False),
+    "choose-workspace": ("workspace_id", "¿Qué workspace?", "workspaces", False),
+    "choose-space": ("space_id", "¿Qué space?", "spaces", False),
+    "choose-list": ("list_id", "¿A qué lista(s) escribe este repo?", "lists", True),
+}
+
 
 def run(args: argparse.Namespace) -> int:
+    if not _interactive(args):
+        return _run_once(args)
+
+    if not list_profiles():
+        _add_first_credential(args)
+
+    while True:
+        try:
+            return _run_once(args)
+        except NeedsChoice as choice:
+            _answer(args, choice.payload)
+
+
+def _interactive(args: argparse.Namespace) -> bool:
+    return not getattr(args, "no_input", False) and is_interactive()
+
+
+def _add_first_credential(args: argparse.Namespace) -> None:
+    """Ask for a token here rather than sending the user off to another command."""
+    print("Todavía no hay credenciales guardadas.")
+    provider = creds._provider(args.provider) if args.provider else creds.ask_provider()
+    token = ask_secret(f"Token de {provider.value} ({creds.WHERE_TO_GET_ONE[provider]})").strip()
+
+    email, reachable = creds.verify_token(provider, token)
+    name = ask("Nombre para este perfil", default=provider.value)
+    workspace_id = creds.pick_workspace(None, reachable)
+
+    creds.save_profile(name, provider, token, workspace_id)
+    creds.report(name, email, reachable, workspace_id)
+
+    args.profile = name
+    args.provider = provider.value
+
+
+def _answer(args: argparse.Namespace, payload: dict[str, Any]) -> None:
+    """Ask the question this exit-2 payload describes, and record the answer in `args`."""
+    action = str(payload.get("action"))
+    plan = _QUESTIONS.get(action)
+    if plan is None:
+        raise PMError(f"No sé cómo preguntar {action!r} de forma interactiva.")
+
+    key, question, options_key, multi = plan
+    picked = choose(question, _options(payload.get(options_key, [])), multi=multi)
+    setattr(args, key, picked if multi else picked[0])
+
+
+def _options(raw: list[Any]) -> list[Choice]:
+    """Turn a payload's options into menu entries, whatever shape they arrived in."""
+    out: list[Choice] = []
+    for item in raw:
+        if isinstance(item, str):
+            out.append(Choice(id=item, label=item))
+            continue
+        identifier = str(item.get("id") or item.get("name"))
+        label = str(item.get("name") or identifier)
+        detail = str(item["id"]) if item.get("id") and item.get("name") else ""
+        out.append(
+            Choice(id=identifier, label=label, detail=detail or str(item.get("provider", "")))
+        )
+    return out
+
+
+def _run_once(args: argparse.Namespace) -> int:
     repo_root = find_repo_root()
     if repo_root is None:
         raise PMError(f"Not inside a git repository, so there is no root to put {PM_FILE_NAME} in.")
