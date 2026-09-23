@@ -46,6 +46,17 @@ class ScopeViolation(PMError):
         super().__init__(message, exit_code=EXIT_SCOPE)
 
 
+class CacheInvalid(PMError):
+    """The local cache does not hold what a read needs, and `pm setup --force` fixes it.
+
+    Distinct from a bare `PMError` so a caller can tell "the cache needs a
+    refresh" apart from every other fatal error by exit code alone.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, exit_code=EXIT_CACHE_INVALID)
+
+
 class NeedsChoice(PMError):
     """Caller must pick from options. `payload` is JSON-printed to stdout."""
 

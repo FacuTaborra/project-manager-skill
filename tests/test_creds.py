@@ -177,3 +177,23 @@ class TestTokenInput:
     ) -> None:
         with pytest.raises(PMError, match="Unknown provider"):
             creds.run_add(_args(provider="jira"))
+
+
+class TestTomlEscaping:
+    def test_a_token_with_quotes_and_backslashes_round_trips(
+        self, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unescaped `"` or `\\` in the token used to corrupt the TOML it was written into."""
+        tricky_token = 'pk_"weird"\\token'
+        _use(monkeypatch, FakeProvider())
+        creds.run_add(_args(token=tricky_token))
+        profiles = list_profiles(creds_file)
+        assert profiles[0].token == tricky_token
+
+    def test_an_invalid_profile_name_is_rejected_before_anything_is_written(
+        self, creds_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _use(monkeypatch, FakeProvider())
+        with pytest.raises(PMError, match="letters, digits"):
+            creds.run_add(_args(name='evil"] \n[profiles.other'))
+        assert not creds_file.exists()

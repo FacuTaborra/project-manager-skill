@@ -12,6 +12,7 @@ exit 2 locally instead of returning it. Claude's path is untouched.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -158,7 +159,7 @@ def _run_once(args: argparse.Namespace) -> int:
             "commit": "Commiteá este archivo para que el equipo comparta el mismo binding.",
         }
     )
-    print(next_step(repo_root).render())
+    print(next_step(repo_root).render(), file=sys.stderr)
     return EXIT_OK
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import stat
 import sys
 from collections.abc import Sequence
@@ -11,12 +12,15 @@ from pathlib import Path
 
 from ..application.onboarding import next_step
 from ..application.prompt import Choice, ask, ask_secret, choose, is_interactive
+from ..application.toml_render import toml_string
 from ..credentials import credentials_path, list_profiles
 from ..domain.models import Team
 from ..enums import ProviderType
 from ..exceptions import EXIT_OK, PMError, ProviderError
 from ..infrastructure.providers._registry import get_provider
 from ._helpers import print_json
+
+_PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 LEGACY_SECRETS = {
     ProviderType.LINEAR: (Path.home() / ".claude" / "secrets" / "linear-pak.env", "LINEAR_API_KEY"),
@@ -86,7 +90,7 @@ def run_add(args: argparse.Namespace) -> int:
 
     save_profile(name, provider_type, token.strip(), workspace_id, force=args.force)
     report(name, email, reachable, workspace_id)
-    print(next_step().render())
+    print(next_step().render(), file=sys.stderr)
     return EXIT_OK
 
 
@@ -118,7 +122,7 @@ def run_import(args: argparse.Namespace) -> int:
 
     _write_profiles(path, new)
     print_json({"ok": True, "path": str(path), "added": [name for name, *_ in new]})
-    print(next_step().render())
+    print(next_step().render(), file=sys.stderr)
     return EXIT_OK
 
 
@@ -165,6 +169,10 @@ def save_profile(
     force: bool = False,
     path: Path | None = None,
 ) -> None:
+    if not _PROFILE_NAME_RE.match(name):
+        raise PMError(
+            f"Profile name {name!r} is not a valid TOML key. Use only letters, digits, '_' and '-'."
+        )
     target = path or credentials_path()
     if any(p.name == name for p in list_profiles(target)) and not force:
         raise PMError(
@@ -174,14 +182,15 @@ def save_profile(
 
 
 def report(name: str, email: str, reachable: list[Team], workspace_id: str | None) -> None:
-    print(f"  ✓ token válido — autenticado como {email}")
+    print(f"  ✓ token válido — autenticado como {email}", file=sys.stderr)
     print(
         f"  ✓ alcanza {len(reachable)} workspace(s): "
-        + ", ".join(f"{w.name} ({w.id})" for w in reachable)
+        + ", ".join(f"{w.name} ({w.id})" for w in reachable),
+        file=sys.stderr,
     )
     if workspace_id:
-        print(f"  ✓ perfil fijado a {workspace_id}")
-    print(f"  ✓ perfil {name!r} escrito en {credentials_path()}")
+        print(f"  ✓ perfil fijado a {workspace_id}", file=sys.stderr)
+    print(f"  ✓ perfil {name!r} escrito en {credentials_path()}", file=sys.stderr)
 
 
 # -- internals ---------------------------------------------------------------
@@ -213,10 +222,12 @@ def _write_profiles(
     blocks = []
     for name, provider, token, workspace_id in entries:
         block = (
-            f'\n[profiles.{name}]\nprovider     = "{provider.value}"\ntoken        = "{token}"\n'
+            f"\n[profiles.{name}]\n"
+            f"provider     = {toml_string(provider.value)}\n"
+            f"token        = {toml_string(token)}\n"
         )
         if workspace_id:
-            block += f'workspace_id = "{workspace_id}"\n'
+            block += f"workspace_id = {toml_string(workspace_id)}\n"
         blocks.append(block)
 
     with path.open("a", encoding="utf-8") as handle:

@@ -28,7 +28,7 @@ from .commands import (
     setup,
     update_issue,
 )
-from .exceptions import EXIT_OK, NeedsChoice, PMError
+from .exceptions import EXIT_ERROR, EXIT_OK, NeedsChoice, PMError
 
 
 def _common_parser() -> argparse.ArgumentParser:
@@ -279,6 +279,9 @@ def main(argv: list[str] | None = None) -> int:
     except PMError as e:
         print(str(e), file=sys.stderr)
         return e.exit_code
+    except OSError as e:
+        print(f"{e.strerror or e}: {e.filename}", file=sys.stderr)
+        return EXIT_ERROR
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
         return 130

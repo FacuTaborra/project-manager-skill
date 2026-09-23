@@ -52,11 +52,7 @@ class ClickUpProvider:
         return self._http.get_json(f"{CLICKUP_API_BASE}/{path}")
 
     def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        client = HttpClient(
-            url=f"{CLICKUP_API_BASE}/{path}",
-            headers=self._http.headers,
-        )
-        result = client.post_json(body)
+        result = self._http.post_json(body, url=f"{CLICKUP_API_BASE}/{path}")
         if not isinstance(result, dict):
             raise ProviderError(f"Unexpected ClickUp response: {type(result).__name__}")
         return result
@@ -65,11 +61,7 @@ class ClickUpProvider:
         return self._http.get_json(f"{CLICKUP_API_V3_BASE}/{path}")
 
     def _post_v3(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        client = HttpClient(
-            url=f"{CLICKUP_API_V3_BASE}/{path}",
-            headers=self._http.headers,
-        )
-        result = client.post_json(body)
+        result = self._http.post_json(body, url=f"{CLICKUP_API_V3_BASE}/{path}")
         if not isinstance(result, dict):
             raise ProviderError(f"Unexpected ClickUp v3 response: {type(result).__name__}")
         return result
@@ -177,7 +169,7 @@ class ClickUpProvider:
         data = self._get("team")
         teams = data.get("teams") or []
         for team in teams:
-            if team.get("id") != workspace_id:
+            if str(team.get("id")) != workspace_id:
                 continue
             for m in team.get("members") or []:
                 user = m.get("user") or {}
@@ -302,7 +294,7 @@ def _member_id(raw: str) -> int:
 
 def _is_done(task: dict[str, Any]) -> bool:
     status = task.get("status") or {}
-    return status.get("type", "").lower() in _DONE_TYPES
+    return (status.get("type") or "").lower() in _DONE_TYPES
 
 
 def _to_issue(

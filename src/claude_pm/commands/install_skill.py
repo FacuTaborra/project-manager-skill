@@ -8,6 +8,7 @@ a path next to the source.
 from __future__ import annotations
 
 import argparse
+import sys
 from importlib import resources
 from pathlib import Path
 
@@ -76,7 +77,7 @@ def run(args: argparse.Namespace) -> int:
             f"Re-run this command, or add them from Claude Code with /permissions."
         )
     print_json(payload)
-    print(next_step().render())
+    print(next_step().render(), file=sys.stderr)
     return EXIT_OK
 
 

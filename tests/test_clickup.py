@@ -8,18 +8,19 @@ import pytest
 
 from src.claude_pm.domain.models import IssueDraft
 from src.claude_pm.exceptions import ProviderError
-from src.claude_pm.infrastructure.providers.clickup import ClickUpProvider
+from src.claude_pm.infrastructure.providers.clickup import ClickUpProvider, _is_done
 
 WORKSPACE = "ws-1"
 
 
 class FakeHttp:
-    """Minimal HttpClient stand-in. Records GET URLs, replays canned JSON."""
+    """Minimal HttpClient stand-in. Records GET/POST calls, replays canned JSON."""
 
     def __init__(self, responses: dict[str, Any]) -> None:
         self.headers = {"Authorization": "test-key"}
         self._responses = responses
         self.get_urls: list[str] = []
+        self.posts: list[tuple[str, dict[str, Any]]] = []
 
     def get_json(self, url: str) -> Any:
         self.get_urls.append(url)
@@ -33,6 +34,15 @@ class FakeHttp:
         if best is None:
             raise AssertionError(f"Unexpected GET {url} (path={path!r})")
         return self._responses[best]
+
+    def post_json(self, payload: dict[str, Any], url: str | None = None) -> dict[str, Any]:
+        assert url is not None, "ClickUp adapter must always pass an explicit url"
+        self.posts.append((url, payload))
+        path = url.split("/api/v2/", 1)[-1].split("/api/v3/", 1)[-1]
+        for key, response in self._responses.items():
+            if path.startswith(key):
+                return response  # type: ignore[no-any-return]
+        raise AssertionError(f"Unexpected POST {url} (path={path!r})")
 
 
 _TEAM_PAYLOAD = {
@@ -212,3 +222,69 @@ class TestAssignee:
                     assignee_id="not-a-number",
                 )
             )
+
+
+class TestIsDone:
+    def test_a_null_status_type_is_not_done(self) -> None:
+        """ClickUp can return status.type: null; `.lower()` on it used to crash."""
+        assert _is_done({"status": {"type": None, "status": "to do"}}) is False
+
+    def test_a_missing_status_is_not_done(self) -> None:
+        assert _is_done({}) is False
+
+    def test_done_and_closed_types_are_done(self) -> None:
+        assert _is_done({"status": {"type": "done"}}) is True
+        assert _is_done({"status": {"type": "closed"}}) is True
+
+    def test_case_is_ignored(self) -> None:
+        assert _is_done({"status": {"type": "DONE"}}) is True
+
+
+class TestResolveUserWorkspaceIdTypes:
+    def test_a_numeric_team_id_still_matches_the_string_pin(self) -> None:
+        """ClickUp's `team` endpoint can return numeric ids; the pin is always a str."""
+        payload = {
+            "teams": [
+                {
+                    "id": 12345,
+                    "members": [
+                        {"user": {"id": 42, "email": "dev@example.com", "username": "dev"}},
+                    ],
+                }
+            ]
+        }
+        provider, _ = _provider({"team": payload}, workspace_id="12345")
+        user = provider.resolve_user_by_email("dev@example.com")
+        assert user is not None
+        assert user.id == "42"
+
+
+class TestPostThroughInjectedHttp:
+    def test_post_uses_the_constructor_injected_http_client(self) -> None:
+        """`_post` must not build its own HttpClient, bypassing `self._http`."""
+        http = FakeHttp(
+            {"list/list-9/task": {"id": "t1", "name": "T", "status": {"status": "to do"}}}
+        )
+        provider = ClickUpProvider("test-key", workspace_id=WORKSPACE, http=http)
+
+        provider.create_issue(
+            IssueDraft(title="T", description="D", project_id="list-9", team_id="space-1")
+        )
+
+        assert len(http.posts) == 1
+        url, body = http.posts[0]
+        assert url.endswith("list/list-9/task")
+        assert body["name"] == "T"
+
+    def test_post_v3_uses_the_injected_http_client_too(self) -> None:
+        http = FakeHttp(
+            {
+                "team": _TEAM_PAYLOAD,
+                "workspaces/ws-1/docs": {"doc": {"id": "d1", "title": "Doc"}},
+            }
+        )
+        provider = ClickUpProvider("test-key", workspace_id=WORKSPACE, http=http)
+
+        provider.create_doc("Doc")
+
+        assert any(url.endswith("workspaces/ws-1/docs") for url, _ in http.posts)

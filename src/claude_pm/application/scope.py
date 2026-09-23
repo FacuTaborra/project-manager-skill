@@ -293,8 +293,8 @@ class ScopeGuard:
                 known = ", ".join(sorted(available)) or "(none)"
                 raise PMError(
                     f"Label {name!r} does not exist in this space. Available: {known}. "
-                    f"Create it in the tracker, or run `pm setup --ensure-labels "
-                    f"--allow-structural-changes`."
+                    f"Create the label in the tracker, or remove it from [defaults].labels "
+                    f"in .pm.toml."
                 )
             resolved.append(label_id)
         return tuple(resolved)
