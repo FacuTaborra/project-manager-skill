@@ -198,6 +198,8 @@ pm creds list                      # perfiles (tokens redactados)
 pm init                            # escribe .pm.toml en este repo
 ```
 
+Si venías de una versión anterior: `~/.cache/claude-pm/` ya no se usa y se puede borrar.
+
 ### Issues
 
 ```bash
