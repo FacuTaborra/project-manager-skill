@@ -4,7 +4,6 @@ Exit codes:
     0 — success
     1 — fatal error (PMError, ConfigError, ProviderError without exit override)
     2 — needs user choice (NeedsChoice; payload is JSON-printed to stdout)
-    3 — cache invalid / requires `setup --force`
     4 — refused: the write targets something outside this repo's declared scope
 """
 
@@ -15,7 +14,6 @@ from typing import Any
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_NEEDS_CHOICE = 2
-EXIT_CACHE_INVALID = 3
 EXIT_SCOPE = 4
 
 
@@ -44,17 +42,6 @@ class ScopeViolation(PMError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message, exit_code=EXIT_SCOPE)
-
-
-class CacheInvalid(PMError):
-    """The local cache does not hold what a read needs, and `pm setup --force` fixes it.
-
-    Distinct from a bare `PMError` so a caller can tell "the cache needs a
-    refresh" apart from every other fatal error by exit code alone.
-    """
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message, exit_code=EXIT_CACHE_INVALID)
 
 
 class NeedsChoice(PMError):

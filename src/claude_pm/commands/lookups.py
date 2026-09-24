@@ -9,7 +9,7 @@ import argparse
 
 from ..exceptions import EXIT_OK, PMError
 from ._output import print_json
-from ._wiring import build_cache_refresher, prepare_read
+from ._wiring import prepare_read
 
 
 def run_list_teams(args: argparse.Namespace) -> int:
@@ -21,8 +21,8 @@ def run_list_teams(args: argparse.Namespace) -> int:
 
 def run_list_states(args: argparse.Namespace) -> int:
     config, provider = prepare_read(args)
-    cache = build_cache_refresher(config, provider).refresh().cache
-    print_json({"states": cache.state_id_by_name})
+    states = provider.list_states(config.scope.team_id)
+    print_json({"states": {s.name: s.id for s in states}})
     return EXIT_OK
 
 

@@ -196,7 +196,6 @@ pm install-skill --yes             # instala SKILL.md + permisos
 pm creds add --name N --provider P --token T
 pm creds list                      # perfiles (tokens redactados)
 pm init                            # escribe .pm.toml en este repo
-pm setup --force                   # revalida el scope y refresca el cache
 ```
 
 ### Issues

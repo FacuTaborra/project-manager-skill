@@ -48,7 +48,6 @@ If the user asks you to install or set up the tool, the same applies: run `pm do
 | Subcommand | Purpose |
 |---|---|
 | `doctor` | Check config, scope and connectivity. Run if anything looks broken. |
-| `setup` | Verify the declared scope and refresh the cache. Auto-runs on first use. |
 | `briefing` | Open issues grouped by state. Outputs JSON. |
 | `get-issue --id <ID>` | Fetch one issue — title, description, state, priority, url. |
 | `search "<query>"` | Search issues for duplicate detection before planning. |
@@ -81,7 +80,7 @@ If the user asks you to install or set up the tool, the same applies: run `pm do
 
 ## Step 1 — Ensure setup
 
-The first call auto-verifies the declared scope. On **exit 1** mentioning configuration, run `pm doctor` and surface its next step. On **exit 2**, show the options in their language, wait for their pick, re-run with the flag.
+On **exit 1** mentioning configuration, run `pm doctor` and surface its next step. On **exit 2**, show the options in their language, wait for their pick, re-run with the flag.
 
 ## Step 2 — Detect mode
 

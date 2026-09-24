@@ -12,6 +12,7 @@ from src.claude_pm.application.scope_discovery import (
     resolve_projects,
     resolve_team,
     resolve_workspace,
+    verify_declared_scope,
 )
 from src.claude_pm.domain.binding import IssueDefaults, ScopeProject, WriteScope
 from src.claude_pm.domain.models import Project, Team
@@ -153,3 +154,34 @@ class TestRenderPmToml:
         )
         rendered = render_pm_toml(provider_name="clickup", profile_name="p", scope=scope)
         assert parse_pm_file(rendered, path=Path("/x/.pm.toml")).scope.project_ids == {"a", "b"}
+
+
+class TestVerifyDeclaredScope:
+    SOURCE = Path("/repo/.pm.toml")
+
+    def _scope(self, **overrides) -> WriteScope:
+        fields = {
+            "workspace_id": "ws-1",
+            "team_id": "space-1",
+            "team_name": "4plus",
+            "projects": (ScopeProject(id="list-1", name="modulo-energia"),),
+        }
+        fields.update(overrides)
+        return WriteScope(**fields)
+
+    def test_an_intact_board_has_no_warnings(self) -> None:
+        assert verify_declared_scope(FakeProvider(), self._scope(), self.SOURCE) == []
+
+    def test_a_missing_space_is_refused(self) -> None:
+        with pytest.raises(PMError, match="does not exist"):
+            verify_declared_scope(FakeProvider(), self._scope(team_id="ghost"), self.SOURCE)
+
+    def test_a_missing_list_names_what_exists(self) -> None:
+        scope = self._scope(projects=(ScopeProject(id="ghost", name="x"),))
+        with pytest.raises(PMError, match="modulo-energia"):
+            verify_declared_scope(FakeProvider(), scope, self.SOURCE)
+
+    def test_a_renamed_list_is_a_warning(self) -> None:
+        scope = self._scope(projects=(ScopeProject(id="list-1", name="old-name"),))
+        [warning] = verify_declared_scope(FakeProvider(), scope, self.SOURCE)
+        assert "now named 'modulo-energia'" in warning

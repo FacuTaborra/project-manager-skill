@@ -24,7 +24,6 @@ from src.claude_pm.domain.binding import (
 )
 from src.claude_pm.domain.models import Doc, Issue, IssueUpdate, Label, Project, State, Team, User
 from src.claude_pm.exceptions import NeedsChoice, PMError, ScopeViolation
-from src.claude_pm.infrastructure.cache import Cache
 
 IN_SCOPE = "list-in"
 OTHER = "list-out"
@@ -41,15 +40,6 @@ TWO_LISTS = WriteScope(
     workspace_id="ws-1",
     team_id="space-1",
     projects=(ScopeProject(id=IN_SCOPE, name="a"), ScopeProject(id="list-two", name="b")),
-)
-
-CACHE = Cache(
-    fingerprint="fp",
-    team_id="space-1",
-    team_name="4plus",
-    projects=({"id": IN_SCOPE, "name": "modulo-energia"},),
-    state_id_by_name={"Backlog": "Backlog", "In Progress": "in progress"},
-    labels=({"id": "alerts-api", "name": "alerts-api"}, {"id": "bug", "name": "bug"}),
 )
 
 
@@ -97,9 +87,13 @@ class FakeProvider:
         self.calls.append(("resolve_user_by_email", email))
         return User(id="42", email=email, name="dev") if "dev@" in email else None
 
+    def list_states(self, team_id: str) -> list[State]:
+        self.calls.append(("list_states", team_id))
+        return [State(id="Backlog", name="Backlog"), State(id="in progress", name="In Progress")]
+
     def list_labels(self, team_id: str) -> list[Label]:
         self.calls.append(("list_labels", team_id))
-        return [Label(id="alerts-api", name="alerts-api")]
+        return [Label(id="alerts-api", name="alerts-api"), Label(id="bug", name="bug")]
 
     def reachable_workspace_ids(self) -> list[str]:
         self.calls.append(("reachable_workspace_ids", None))
@@ -110,7 +104,7 @@ class FakeProvider:
 
 
 def _guard(provider: FakeProvider, **kwargs: Any) -> ScopeGuard:
-    options: dict[str, Any] = {"scope": SCOPE, "cache": CACHE}
+    options: dict[str, Any] = {"scope": SCOPE}
     options.update(kwargs)
     return ScopeGuard(provider=provider, **options)
 
@@ -342,16 +336,17 @@ class TestResolution:
                 title="T", description="D", assignee_email="ghost@example.com"
             )
 
-    def test_labels_come_from_the_cache_without_an_api_call(self) -> None:
+    def test_no_state_and_no_labels_cost_no_lookup(self) -> None:
         provider = FakeProvider()
-        _guard(provider).create_issue(title="T", description="D", labels=["bug"])
+        _guard(provider).create_issue(title="T", description="D")
+        assert "list_states" not in provider.names()
         assert "list_labels" not in provider.names()
 
-    def test_an_empty_label_cache_falls_back_to_the_api(self) -> None:
+    def test_an_unknown_state_is_refused_before_writing(self) -> None:
         provider = FakeProvider()
-        guard = _guard(provider, cache=Cache(state_id_by_name=CACHE.state_id_by_name))
-        guard.create_issue(title="T", description="D", labels=["alerts-api"])
-        assert "list_labels" in provider.names()
+        with pytest.raises(PMError, match="not found"):
+            _guard(provider).create_issue(title="T", description="D", state="Nope")
+        assert "create_issue" not in provider.names()
 
     def test_an_unknown_label_is_refused_before_writing(self) -> None:
         provider = FakeProvider()
@@ -378,32 +373,30 @@ class TestBuildGuard:
         return RepoContext(
             pm_file=pm_file,
             profile=CredentialProfile("4plus", ProviderType.CLICKUP, "pk_x", workspace_id),
-            cache_path=Path("/tmp/cache.json"),
-            fingerprint="fp",
         )
 
     def test_a_reachable_workspace_yields_a_guard(self) -> None:
-        guard = build_guard(self._config(), FakeProvider(reachable=("ws-1",)), CACHE)
+        guard = build_guard(self._config(), FakeProvider(reachable=("ws-1",)))
         assert guard.scope.workspace_id == "ws-1"
 
     def test_an_unreachable_workspace_is_refused(self) -> None:
         """Wrong profile, or a rotated token — caught before anything is written."""
         with pytest.raises(ScopeViolation, match="cannot reach workspace"):
-            build_guard(self._config(), FakeProvider(reachable=("ws-other",)), CACHE)
+            build_guard(self._config(), FakeProvider(reachable=("ws-other",)))
 
     def test_the_refusal_says_what_the_token_does_reach(self) -> None:
         with pytest.raises(ScopeViolation, match="ws-other"):
-            build_guard(self._config(), FakeProvider(reachable=("ws-other",)), CACHE)
+            build_guard(self._config(), FakeProvider(reachable=("ws-other",)))
 
     def test_repo_defaults_are_carried_into_the_guard(self) -> None:
-        guard = build_guard(self._config(), FakeProvider(), CACHE, dry_run=True)
+        guard = build_guard(self._config(), FakeProvider(), dry_run=True)
         assert guard.dry_run is True
         assert guard.allow_structural_changes is False
 
     def test_the_pin_can_be_skipped_when_already_checked(self) -> None:
         """prepare_write verifies it earlier, so the guard must not pay for it twice."""
         provider = FakeProvider(reachable=("ws-other",))
-        guard = build_guard(self._config(), provider, CACHE, check_workspace_pin=False)
+        guard = build_guard(self._config(), provider, check_workspace_pin=False)
         assert "reachable_workspace_ids" not in provider.names()
         assert guard.scope.workspace_id == "ws-1"
 

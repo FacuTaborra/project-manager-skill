@@ -24,7 +24,6 @@ from ..domain.binding import IssueDefaults, WriteScope
 from ..domain.models import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
 from ..domain.ports import DocProvider, IssueProvider
 from ..exceptions import NeedsChoice, PMError, ScopeViolation
-from ..infrastructure.cache import Cache
 from .repo_context import RepoContext
 
 
@@ -54,7 +53,6 @@ WriteResult = TypeVar("WriteResult")
 class ScopeGuard:
     provider: IssueProvider
     scope: WriteScope
-    cache: Cache
     defaults: IssueDefaults = field(default_factory=IssueDefaults)
     dry_run: bool = False
     allow_structural_changes: bool = False
@@ -158,10 +156,11 @@ class ScopeGuard:
         return self.provider
 
     def _destination_label(self, project_id: str | None) -> str:
-        project_label = self.cache.project_name(project_id or "") if project_id else None
-        if not project_label and project_id:
-            project_label = next((r.name for r in self.scope.projects if r.id == project_id), None)
-        project_label = project_label or project_id or "(workspace)"
+        project_label = (
+            next((r.name for r in self.scope.projects if r.id == project_id and r.name), None)
+            or project_id
+            or "(workspace)"
+        )
         workspace_label = self.scope.workspace_name or self.scope.workspace_id
         team_label = self.scope.team_name or self.scope.team_id
         return f"{workspace_label} → {team_label} → {project_label}"
@@ -331,11 +330,14 @@ class ScopeGuard:
     def resolve_state_id(self, state_name: str | None) -> str | None:
         if not state_name:
             return None
-        for name, state_id in self.cache.state_id_by_name.items():
-            if name.lower() == state_name.lower():
-                return state_id
-        available = ", ".join(self.cache.state_id_by_name) or "(none cached)"
-        raise PMError(f"State {state_name!r} not found. Available: {available}.")
+
+        states = self.provider.list_states(self.scope.team_id)
+        match = next((s for s in states if s.name.lower() == state_name.lower()), None)
+        if match is None:
+            available = ", ".join(s.name for s in states) or "(none)"
+            raise PMError(f"State {state_name!r} not found. Available: {available}.")
+
+        return match.id
 
     def resolve_assignee_id(self, email: str | None) -> str | None:
         if not email:
@@ -348,12 +350,9 @@ class ScopeGuard:
     def resolve_label_ids(self, names: Sequence[str]) -> tuple[str, ...]:
         if not names:
             return ()
-        label_id_by_name = {lbl["name"].lower(): lbl["id"] for lbl in self.cache.labels}
-        if not label_id_by_name:
-            label_id_by_name = {
-                label.name.lower(): label.id
-                for label in self.provider.list_labels(self.scope.team_id)
-            }
+        label_id_by_name = {
+            label.name.lower(): label.id for label in self.provider.list_labels(self.scope.team_id)
+        }
         resolved: list[str] = []
         for name in names:
             label_id = label_id_by_name.get(name.lower())
@@ -390,7 +389,6 @@ def verify_workspace_pin(config: RepoContext, provider: IssueProvider) -> None:
 def build_guard(
     config: RepoContext,
     provider: IssueProvider,
-    cache: Cache,
     *,
     dry_run: bool = False,
     allow_structural_changes: bool = False,
@@ -406,7 +404,6 @@ def build_guard(
     return ScopeGuard(
         provider=provider,
         scope=config.scope,
-        cache=cache,
         defaults=config.pm_file.defaults,
         dry_run=dry_run,
         allow_structural_changes=allow_structural_changes,

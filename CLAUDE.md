@@ -26,7 +26,7 @@ Si vas a agregar una operación que escribe: el método nuevo va en `ScopeGuard`
 ```
 cli.py                    argparse; los flags compartidos vienen de parsers padre
   └─ commands/            I/O y serialización JSON, nada de lógica
-      └─ application/     servicios: scope (el guard), cache_refresh, briefing, search, scope_discovery
+      └─ application/     servicios: scope (el guard), briefing, search, scope_discovery
           └─ domain/      ports.py (Protocols) + models.py (dataclasses frozen)
               ← infrastructure/providers/{linear,clickup}.py
 ```
@@ -52,16 +52,6 @@ silencio, y así fue como su campo `label:` estuvo meses sin hacer nada.
 
 Las env vars `LINEAR_API_KEY` / `CLICKUP_API_KEY` **no se leen**. Tomar un token del directorio
 donde uno está parado es exactamente lo que este diseño saca. Para CI está `PM_TOKEN`.
-
-## Cache
-
-`~/.cache/claude-pm/<repo-slug>-<fingerprint8>.json`, donde el fingerprint sale de
-`provider|profile|workspace|space|lists|repo_root`. Como el fingerprint **es** parte del nombre del
-archivo, cambiar cualquiera de esos componentes aterriza en otro archivo: la invalidación sale
-gratis y no hay lógica de invalidación que se pueda equivocar.
-
-Formato v2. Lo que escribió una versión anterior se ignora, no se migra: el bug de v1 *era* su
-clave, así que importarlo sería confiar en un binding que nunca se validó.
 
 ## Providers
 

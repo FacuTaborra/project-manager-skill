@@ -13,6 +13,7 @@ import sys
 from ..application.onboarding import SKILL_FILE, next_step
 from ..application.repo_context import RepoContext
 from ..application.scope import verify_workspace_pin
+from ..application.scope_discovery import verify_declared_scope
 from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError, ScopeViolation
 from ..infrastructure.config_files.credentials_store import (
     credentials_path,
@@ -76,11 +77,6 @@ def _report_config(config: RepoContext) -> None:
     if config.pm_file.defaults.labels:
         print(f"  Auto-labels:   {', '.join(config.pm_file.defaults.labels)}")
 
-    print(
-        f"  Cache:         {config.cache_path}"
-        f" {'(exists)' if config.cache_path.is_file() else '(not yet)'}"
-    )
-
 
 def _report_connectivity(config: RepoContext) -> int:
     print("  Provider ping: testing...")
@@ -98,5 +94,15 @@ def _report_connectivity(config: RepoContext) -> int:
         return EXIT_ERROR
 
     print(f"  Pin workspace: ok — the token reaches {config.scope.workspace_id}")
+
+    try:
+        warnings = verify_declared_scope(provider, config.scope, config.pm_file.path)
+    except PMError as exc:
+        print(f"  Board:         FAILED — {exc}")
+        return EXIT_ERROR
+
+    print("  Board:         ok — the space and every list exist")
+    for warning in warnings:
+        print(f"  WARNING:       {warning}")
     print(next_step().render())
     return EXIT_OK

@@ -25,7 +25,6 @@ from .commands import (
     install_skill,
     lookups,
     search,
-    setup,
     structure,
     update_issue,
 )
@@ -98,7 +97,7 @@ def _add_setup_commands(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
     common: argparse.ArgumentParser,
 ) -> None:
-    """`init`, `creds`, `install-skill`, `doctor`, `setup` — onboarding and diagnostics."""
+    """`init`, `creds`, `install-skill`, `doctor` — onboarding and diagnostics."""
     p_init = sub.add_parser(
         "init",
         parents=[
@@ -159,12 +158,6 @@ def _add_setup_commands(
 
     p_doctor = sub.add_parser("doctor", parents=[common], help="Diagnose configuration.")
     p_doctor.set_defaults(func=doctor.run)
-
-    p_setup = sub.add_parser(
-        "setup", parents=[common], help="Verify the declared scope and refresh the cache."
-    )
-    p_setup.add_argument("--force", action="store_true", help="Refresh even if the cache is fresh.")
-    p_setup.set_defaults(func=setup.run)
 
 
 def _add_read_commands(

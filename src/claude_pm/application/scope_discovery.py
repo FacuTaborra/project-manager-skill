@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from ..domain.binding import ScopeProject, WriteScope
 from ..domain.ports import IssueProvider
@@ -108,6 +109,38 @@ def discover_scope(
         team_name=resolved_team_name,
         projects=projects,
     )
+
+
+def verify_declared_scope(provider: IssueProvider, scope: WriteScope, source: Path) -> list[str]:
+    """Raise if the declared space or a list is gone; return warnings for renamed ones."""
+    teams = provider.list_teams()
+    team = next((t for t in teams if t.id == scope.team_id), None)
+    if team is None:
+        raise PMError(
+            f"Space {scope.team_id} declared in {source} does not exist. {_options(teams)} "
+            "Re-run `pm init --force`."
+        )
+
+    warnings = []
+    if scope.team_name and team.name.lower() != scope.team_name.lower():
+        warnings.append(
+            f"Space {team.id} is now named {team.name!r}, {source} says {scope.team_name!r}."
+        )
+
+    projects = {p.id: p for p in provider.list_projects(scope.team_id)}
+    for ref in scope.projects:
+        project = projects.get(ref.id)
+        if project is None:
+            raise PMError(
+                f"List {ref.id} ({ref.name or 'unnamed'}) declared in {source} is not in space "
+                f"{team.name}. {_options(list(projects.values()))} Re-run `pm init --force`."
+            )
+        if ref.name and project.name.lower() != ref.name.lower():
+            warnings.append(
+                f"List {ref.id} is now named {project.name!r}, {source} says {ref.name!r}."
+            )
+
+    return warnings
 
 
 def _options(items: list) -> str:  # type: ignore[type-arg]

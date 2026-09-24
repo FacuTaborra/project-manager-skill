@@ -59,7 +59,7 @@ MCP (Model Context Protocol) es la forma "oficial" de conectar Claude con herram
 
 Cada vez que Claude necesita saber tu team ID, project ID, o los estados disponibles, MCP hace una llamada a la API. Si en una sesión necesitás briefing + crear 5 issues, son decenas de llamadas redundantes.
 
-La skill tiene un **cache local**, keyeado por repo + perfil + tablero. Después del primer uso, las llamadas de discovery desaparecen. Es instantáneo.
+La skill no descubre nada en cada llamada: los IDs del tablero ya están en `.pm.toml`, así que cada comando va directo a lo que necesita.
 
 ### 2. MCP no tiene contexto del repo
 
@@ -130,7 +130,7 @@ El flujo cuando escribís `/pm`:
 Claude Code
   └── lee SKILL.md (instrucciones para Claude)
        └── Claude ejecuta: pm briefing
-            └── CLI lee cache → llama API si hace falta → imprime JSON
+            └── CLI lee .pm.toml → llama la API → imprime JSON
                  └── Claude parsea JSON y presenta el briefing en tu idioma
 ```
 

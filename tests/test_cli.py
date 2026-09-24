@@ -190,11 +190,6 @@ class TestOSErrorHandling:
 
 
 class TestRemovedSurface:
-    def test_setup_can_no_longer_create_a_project(self) -> None:
-        """Discovery is gone: the board comes from .pm.toml."""
+    def test_setup_is_gone(self) -> None:
         with pytest.raises(SystemExit):
-            _parse(["setup", "--create-project"])
-
-    def test_setup_no_longer_takes_id_overrides(self) -> None:
-        with pytest.raises(SystemExit):
-            _parse(["setup", "--team-id", "x"])
+            _parse(["setup"])
