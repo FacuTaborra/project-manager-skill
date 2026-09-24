@@ -116,7 +116,7 @@ $ pm init
 
 El token se lee sin eco, así que no queda en el scrollback.
 
-Cuando lo corre un script o un agente —sin terminal— no pregunta nada: sale con exit 2 y un payload JSON con las opciones, y se reintenta con el flag (`--workspace-id`, `--list-id`). `--no-input` fuerza ese modo.
+Cuando lo corre un script o un agente —sin terminal— no pregunta nada: si falta decidir algo, sale con exit 1 listando las opciones y el flag a pasar (`--workspace-id`, `--space-id`, `--list-id`, `--profile`). `--no-input` fuerza ese modo.
 
 El resultado se ve así:
 
@@ -234,7 +234,6 @@ de pasar `--label`.
 
 ```bash
 export PM_TOKEN=pk_xxx
-export PM_PROFILE=4plus     # opcional
 ```
 
 `PM_TOKEN` saltea el archivo de credenciales. Las variables `LINEAR_API_KEY` / `CLICKUP_API_KEY`

@@ -104,7 +104,7 @@ def _add_setup_commands(
             common,
             _dry_run_parser("Print the TOML, write nothing."),
             _no_input_parser(
-                "Never prompt; return exit 2 with a choice payload instead. For non-human callers."
+                "Never prompt; fail listing the options and the flag to pass. For non-human callers."
             ),
         ],
         help="Write this repo's .pm.toml.",
@@ -124,7 +124,7 @@ def _add_setup_commands(
         parents=[
             _dry_run_parser("Verify but do not write."),
             _no_input_parser(
-                "Never prompt; fail or return a choice payload instead. For non-human callers."
+                "Never prompt; fail naming the missing flag instead. For non-human callers."
             ),
         ],
         help="Verify a token against the API and store it as a named profile.",

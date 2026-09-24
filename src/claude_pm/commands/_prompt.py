@@ -1,10 +1,6 @@
-"""Terminal prompts, used only when a human is actually at the keyboard.
+"""Terminal prompts, used only when a human is at the keyboard.
 
-The CLI has two consumers. Claude gets exit 2 with a `NeedsChoice` payload and
-answers by re-running with a flag. A person gets the same questions asked out
-loud. Which one you are is decided by whether stdin is a terminal, so neither
-consumer has to know about the other, and `--no-input` forces the machine
-protocol if that detection is ever wrong.
+Without one (Claude, CI, or `--no-input`) commands fail naming the flag to pass instead.
 """
 
 from __future__ import annotations

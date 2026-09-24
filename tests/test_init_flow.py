@@ -8,15 +8,20 @@ from pathlib import Path
 import pytest
 
 from src.claude_pm.application.scope_discovery import (
+    Option,
+    choose_profile,
     discover_scope,
-    resolve_projects,
-    resolve_team,
-    resolve_workspace,
     verify_declared_scope,
 )
-from src.claude_pm.domain.binding import IssueDefaults, ScopeProject, WriteScope
+from src.claude_pm.domain.binding import (
+    CredentialProfile,
+    IssueDefaults,
+    ProviderType,
+    ScopeProject,
+    WriteScope,
+)
 from src.claude_pm.domain.models import Project, Team
-from src.claude_pm.exceptions import NeedsChoice, PMError
+from src.claude_pm.exceptions import ConfigError, PMError
 from src.claude_pm.infrastructure.config_files.pm_file import parse_pm_file, render_pm_toml
 
 
@@ -41,56 +46,63 @@ class FakeProvider:
         return self._projects
 
 
-class TestResolution:
-    def test_a_single_workspace_is_adopted(self) -> None:
-        assert resolve_workspace(FakeProvider(), None) == ("ws-1", "Hemisphere")
+class RecordingPick:
+    """Answers every question with the options at `answers[flag]`, and remembers what was asked."""
 
-    def test_several_workspaces_ask(self) -> None:
-        provider = FakeProvider(
-            workspaces=[Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
-        )
-        with pytest.raises(NeedsChoice) as excinfo:
-            resolve_workspace(provider, None)
-        assert excinfo.value.payload["action"] == "choose-workspace"
+    def __init__(self, answers: dict[str, list[str]] | None = None) -> None:
+        self.answers = answers or {}
+        self.asked: list[tuple[str, list[Option], bool]] = []
 
-    def test_a_declared_workspace_must_be_reachable(self) -> None:
-        with pytest.raises(PMError, match="cannot reach workspace"):
-            resolve_workspace(FakeProvider(), "ws-other")
+    def __call__(self, question: str, options, flag: str, multi: bool) -> list[str]:
+        self.asked.append((flag, list(options), multi))
+        return self.answers[flag]
 
-    def test_several_spaces_and_no_hint_asks(self) -> None:
-        provider = FakeProvider(
-            spaces=[Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
-        )
-        with pytest.raises(NeedsChoice) as excinfo:
-            resolve_team(provider, team_id=None)
-        assert excinfo.value.payload["action"] == "choose-space"
 
-    def test_lists_by_id(self) -> None:
-        refs = resolve_projects(FakeProvider(), "space-1", project_ids=["list-1"])
-        assert refs == (ScopeProject(id="list-1", name="modulo-energia"),)
+def _discover(provider: FakeProvider, pick: RecordingPick, **flags):
+    options = {"workspace_id": None, "team_id": None, "project_ids": None}
+    options.update(flags)
+    return discover_scope(lambda _ws: provider, pick=pick, **options)
 
-    def test_unknown_list_id_is_refused(self) -> None:
-        with pytest.raises(PMError, match="not found in this space"):
-            resolve_projects(FakeProvider(), "space-1", project_ids=["ghost"])
 
-    def test_no_hint_asks_rather_than_picking(self) -> None:
-        with pytest.raises(NeedsChoice) as excinfo:
-            resolve_projects(FakeProvider(), "space-1")
-        assert excinfo.value.payload["action"] == "choose-list"
+TWO = [Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
 
 
 class TestDiscoverScope:
-    def test_end_to_end(self) -> None:
-        scope = discover_scope(
-            lambda _workspace_id: FakeProvider(),
-            workspace_id=None,
-            team_id="space-1",
-            project_ids=["list-1"],
-        )
-        assert scope.workspace_id == "ws-1"
-        assert scope.team_id == "space-1"
-        assert scope.project_ids == {"list-1"}
+    def test_single_options_are_adopted_without_asking(self) -> None:
+        pick = RecordingPick()
+        scope = _discover(FakeProvider(), pick)
+        assert pick.asked == []
         assert scope.describe() == "Hemisphere → 4plus → modulo-energia"
+
+    def test_several_workspaces_ask_with_the_flag_to_pass(self) -> None:
+        pick = RecordingPick({"--workspace-id": ["b"]})
+        scope = _discover(FakeProvider(workspaces=TWO), pick)
+        assert scope.workspace_id == "b"
+        assert pick.asked[0][0] == "--workspace-id"
+        assert [o.id for o in pick.asked[0][1]] == ["a", "b"]
+
+    def test_several_spaces_ask(self) -> None:
+        pick = RecordingPick({"--space-id": ["a"]})
+        assert _discover(FakeProvider(spaces=TWO), pick).team_id == "a"
+
+    def test_several_lists_are_a_multi_choice(self) -> None:
+        lists = [Project(id="l1", name="One"), Project(id="l2", name="Two")]
+        pick = RecordingPick({"--list-id": ["l1", "l2"]})
+        scope = _discover(FakeProvider(projects=lists), pick)
+        assert scope.project_ids == {"l1", "l2"}
+        assert pick.asked[0][2] is True
+
+    def test_flags_win_and_skip_the_question(self) -> None:
+        pick = RecordingPick()
+        scope = _discover(
+            FakeProvider(workspaces=TWO, spaces=TWO), pick, workspace_id="a", team_id="b"
+        )
+        assert (scope.workspace_id, scope.team_id) == ("a", "b")
+        assert pick.asked == []
+
+    def test_an_unknown_id_lists_what_exists(self) -> None:
+        with pytest.raises(PMError, match="modulo-energia"):
+            _discover(FakeProvider(), RecordingPick(), project_ids=["ghost"])
 
     def test_the_provider_is_pinned_once_the_workspace_is_known(self) -> None:
         """Spaces cannot be listed before the workspace is decided."""
@@ -100,8 +112,51 @@ class TestDiscoverScope:
             pins.append(workspace_id)
             return FakeProvider()
 
-        discover_scope(make_provider, workspace_id=None, team_id="space-1", project_ids=["list-1"])
+        discover_scope(
+            make_provider, workspace_id=None, team_id=None, project_ids=None, pick=RecordingPick()
+        )
         assert pins == [None, "ws-1"]
+
+
+CLICKUP = CredentialProfile("4plus", ProviderType.CLICKUP, "pk_secret_token")
+OTHER_CLICKUP = CredentialProfile("otro", ProviderType.CLICKUP, "pk_other_token")
+LINEAR = CredentialProfile("personal", ProviderType.LINEAR, "lin_api_token")
+
+
+class TestChooseProfile:
+    def test_no_profiles_says_how_to_add_one(self) -> None:
+        with pytest.raises(ConfigError, match="pm creds add"):
+            choose_profile([], name=None, provider=None, pick=RecordingPick())
+
+    def test_a_named_profile_wins(self) -> None:
+        chosen = choose_profile(
+            [CLICKUP, LINEAR], name="personal", provider=None, pick=RecordingPick()
+        )
+        assert chosen is LINEAR
+
+    def test_an_unknown_name_lists_what_exists(self) -> None:
+        with pytest.raises(PMError, match="Available: 4plus, personal"):
+            choose_profile([CLICKUP, LINEAR], name="typo", provider=None, pick=RecordingPick())
+
+    def test_a_named_profile_must_match_the_provider(self) -> None:
+        with pytest.raises(PMError, match="is for clickup"):
+            choose_profile(
+                [CLICKUP], name="4plus", provider=ProviderType.LINEAR, pick=RecordingPick()
+            )
+
+    def test_the_only_profile_for_the_provider_is_adopted(self) -> None:
+        pick = RecordingPick()
+        chosen = choose_profile(
+            [CLICKUP, LINEAR], name=None, provider=ProviderType.LINEAR, pick=pick
+        )
+        assert chosen is LINEAR
+        assert pick.asked == []
+
+    def test_several_candidates_ask_and_never_show_a_token(self) -> None:
+        pick = RecordingPick({"--profile": ["otro"]})
+        chosen = choose_profile([CLICKUP, OTHER_CLICKUP], name=None, provider=None, pick=pick)
+        assert chosen is OTHER_CLICKUP
+        assert "pk_" not in repr(pick.asked)
 
 
 class TestRenderPmToml:

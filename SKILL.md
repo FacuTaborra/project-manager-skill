@@ -39,7 +39,7 @@ If the repo has no `.pm.toml`, every command fails. Tell the user to run `pm ini
 
 If the user asks you to install or set up the tool, the same applies: run `pm doctor`, do what it says, run it again. Stop when it reports everything is ready. The one exception is `pm creds add`, which needs a token only the user can get from their browser — ask them for it, do not invent one.
 
-**Always pass `--no-input` to `pm init` and `pm creds add`.** Those commands prompt when they detect a terminal. You do not have one, so they should return exit 2 with a choice payload instead — but the flag makes that certain rather than inferred.
+**Always pass `--no-input` to `pm init` and `pm creds add`.** Those commands prompt when they detect a terminal. You do not have one, so they fail with exit 1 and a message naming the options and the flag to pass — the flag makes that certain rather than inferred.
 
 ---
 
@@ -73,7 +73,6 @@ If the user asks you to install or set up the tool, the same applies: run `pm do
 - `1` — fatal error (config missing, API rejected, ...). Stderr has the message; surface it verbatim.
 - `2` — needs a user choice. Stdout has JSON:
   - `{ "action": "choose-project", "projects": [...] }` → ask, re-run with `--project-id <ID>`
-  - `{ "action": "choose-profile", "profiles": [...] }` → setup problem; tell the user to fix `.pm.toml`
 - `4` — **refused: the write targeted something outside this repo's scope.** Surface the message and stop. Never retry with different ids to get around it.
 
 ---

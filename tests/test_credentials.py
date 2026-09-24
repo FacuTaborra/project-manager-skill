@@ -8,7 +8,7 @@ import pytest
 
 from src.claude_pm.application.profiles import load_profile
 from src.claude_pm.domain.binding import CredentialProfile, ProviderType
-from src.claude_pm.exceptions import ConfigError, NeedsChoice
+from src.claude_pm.exceptions import ConfigError
 from src.claude_pm.infrastructure.config_files.credentials_store import list_profiles
 
 TWO_PROFILES = """
@@ -35,7 +35,7 @@ token    = "pk_cccccccccccc"
 
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("PM_TOKEN", "PM_PROFILE", "PM_WORKSPACE_ID", "PM_CREDENTIALS_FILE"):
+    for name in ("PM_TOKEN", "PM_WORKSPACE_ID", "PM_CREDENTIALS_FILE"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -72,39 +72,18 @@ class TestListProfiles:
 
 class TestLoadProfile:
     def test_by_name(self, tmp_path: Path) -> None:
-        profile = load_profile("personal-linear", path=_write(tmp_path, TWO_PROFILES))
+        profile = load_profile(
+            "personal-linear", provider=ProviderType.LINEAR, path=_write(tmp_path, TWO_PROFILES)
+        )
         assert profile.provider_type is ProviderType.LINEAR
-
-    def test_unnamed_with_a_single_profile_uses_it(self, tmp_path: Path) -> None:
-        assert load_profile(None, path=_write(tmp_path, ONE_PROFILE)).name == "solo"
-
-    def test_unnamed_with_several_asks(self, tmp_path: Path) -> None:
-        with pytest.raises(NeedsChoice) as excinfo:
-            load_profile(None, path=_write(tmp_path, TWO_PROFILES))
-        payload = excinfo.value.payload
-        assert payload["action"] == "choose-profile"
-        assert {p["name"] for p in payload["profiles"]} == {"4plus", "personal-linear"}
-
-    def test_the_choice_payload_never_leaks_a_token(self, tmp_path: Path) -> None:
-        with pytest.raises(NeedsChoice) as excinfo:
-            load_profile(None, path=_write(tmp_path, TWO_PROFILES))
-        rendered = repr(excinfo.value.payload)
-        assert "pk_aaaaaaaaaaaa" not in rendered
-        assert "lin_api_bbbbbbbb" not in rendered
 
     def test_unknown_name_lists_what_exists(self, tmp_path: Path) -> None:
         with pytest.raises(ConfigError, match="Available: 4plus, personal-linear"):
-            load_profile("typo", path=_write(tmp_path, TWO_PROFILES))
+            load_profile("typo", provider=ProviderType.CLICKUP, path=_write(tmp_path, TWO_PROFILES))
 
     def test_no_profiles_at_all(self, tmp_path: Path) -> None:
         with pytest.raises(ConfigError, match="pm creds add"):
-            load_profile("any", path=tmp_path / "absent.toml")
-
-    def test_env_profile_names_the_choice(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("PM_PROFILE", "4plus")
-        assert load_profile(None, path=_write(tmp_path, TWO_PROFILES)).name == "4plus"
+            load_profile("any", provider=ProviderType.CLICKUP, path=tmp_path / "absent.toml")
 
 
 class TestEnvToken:
@@ -113,7 +92,7 @@ class TestEnvToken:
     ) -> None:
         monkeypatch.setenv("PM_TOKEN", "pk_from_ci")
         monkeypatch.setenv("PM_WORKSPACE_ID", "999")
-        profile = load_profile(None, provider=ProviderType.CLICKUP, path=tmp_path / "absent.toml")
+        profile = load_profile("ci", provider=ProviderType.CLICKUP, path=tmp_path / "absent.toml")
         assert profile.token == "pk_from_ci"
         assert profile.workspace_id == "999"
 
@@ -122,7 +101,7 @@ class TestEnvToken:
         monkeypatch.setenv("CLICKUP_API_KEY", "pk_ambient")
         monkeypatch.setenv("LINEAR_API_KEY", "lin_api_ambient")
         with pytest.raises(ConfigError):
-            load_profile(None, provider=ProviderType.CLICKUP, path=Path("/nonexistent.toml"))
+            load_profile("ci", provider=ProviderType.CLICKUP, path=Path("/nonexistent.toml"))
 
 
 class TestRedaction:
@@ -132,34 +111,3 @@ class TestRedaction:
 
     def test_short_token_shows_nothing(self) -> None:
         assert CredentialProfile("p", ProviderType.LINEAR, "short").redacted()["token"] == "…"
-
-
-class TestProviderFiltering:
-    """Offering a Linear profile for a ClickUp repo is noise, not a choice."""
-
-    def test_the_only_profile_for_that_provider_is_used(self, tmp_path: Path) -> None:
-        profile = load_profile(
-            None, provider=ProviderType.LINEAR, path=_write(tmp_path, TWO_PROFILES)
-        )
-        assert profile.name == "personal-linear"
-
-    def test_without_a_provider_hint_it_still_asks(self, tmp_path: Path) -> None:
-        with pytest.raises(NeedsChoice):
-            load_profile(None, path=_write(tmp_path, TWO_PROFILES))
-
-    def test_several_profiles_for_one_provider_still_ask(self, tmp_path: Path) -> None:
-        two_clickup = TWO_PROFILES + '\n[profiles.otro]\nprovider="clickup"\ntoken="pk_d"\n'
-        with pytest.raises(NeedsChoice) as excinfo:
-            load_profile(None, provider=ProviderType.CLICKUP, path=_write(tmp_path, two_clickup))
-        assert {p["name"] for p in excinfo.value.payload["profiles"]} == {"4plus", "otro"}
-
-    def test_no_profile_for_that_provider_says_how_to_add_one(self, tmp_path: Path) -> None:
-        only_clickup = _write(tmp_path, ONE_PROFILE)
-        with pytest.raises(ConfigError, match="pm creds add"):
-            load_profile(None, provider=ProviderType.LINEAR, path=only_clickup)
-
-    def test_an_explicit_name_still_wins_over_the_filter(self, tmp_path: Path) -> None:
-        profile = load_profile(
-            "4plus", provider=ProviderType.CLICKUP, path=_write(tmp_path, TWO_PROFILES)
-        )
-        assert profile.name == "4plus"

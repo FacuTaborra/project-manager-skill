@@ -1,113 +1,109 @@
-"""Resolve a board into a `.pm.toml` scope."""
+"""What `pm init` needs to decide: which credential, workspace, space and lists.
+
+Every choice is resolved the same way: a flag wins, a single option is adopted,
+and anything else goes to `pick` — a menu for a person, an error naming the flag
+for everyone else.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import NamedTuple, Protocol, TypeVar
 
-from ..domain.binding import ScopeProject, WriteScope
+from ..domain.binding import CredentialProfile, ProviderType, ScopeProject, WriteScope
 from ..domain.ports import IssueProvider
-from ..exceptions import NeedsChoice, PMError
+from ..exceptions import ConfigError, PMError
 
 
-def resolve_workspace(provider: IssueProvider, declared: str | None) -> tuple[str, str]:
-    """Pick the workspace to pin, asking only when it is genuinely ambiguous."""
-    workspaces = provider.list_workspaces()
-    if not workspaces:
-        raise PMError("This token cannot see any workspace.")
-
-    if declared:
-        match = next((w for w in workspaces if w.id == declared), None)
-        if match is None:
-            seen = ", ".join(f"{w.name} ({w.id})" for w in workspaces)
-            raise PMError(f"Token cannot reach workspace {declared}. It reaches: {seen}.")
-        return match.id, match.name
-
-    if len(workspaces) == 1:
-        return workspaces[0].id, workspaces[0].name
-
-    raise NeedsChoice(
-        "Several workspaces are reachable. Re-run with --workspace-id <ID>.",
-        {
-            "action": "choose-workspace",
-            "workspaces": [{"id": w.id, "name": w.name} for w in workspaces],
-        },
-    )
+class Option(NamedTuple):
+    id: str
+    label: str
 
 
-def resolve_team(provider: IssueProvider, *, team_id: str | None) -> tuple[str, str]:
-    teams = provider.list_teams()
-    if not teams:
-        raise PMError("This workspace has no spaces/teams.")
-
-    if team_id:
-        match = next((t for t in teams if t.id == team_id), None)
-        if match is None:
-            raise PMError(f"Space {team_id} not found. {_options(teams)}")
-        return match.id, match.name
-
-    if len(teams) == 1:
-        return teams[0].id, teams[0].name
-
-    raise NeedsChoice(
-        "Several spaces exist. Re-run with --space-id <ID>.",
-        {"action": "choose-space", "spaces": [{"id": t.id, "name": t.name} for t in teams]},
-    )
+Pick = Callable[[str, Sequence[Option], str, bool], list[str]]
 
 
-def resolve_projects(
-    provider: IssueProvider,
-    team_id: str,
+class _Named(Protocol):
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+
+Item = TypeVar("Item", bound=_Named)
+
+
+def choose_profile(
+    profiles: Sequence[CredentialProfile],
     *,
-    project_ids: list[str] | None = None,
-) -> tuple[ScopeProject, ...]:
-    projects = provider.list_projects(team_id)
-    if not projects:
-        raise PMError(f"Space {team_id} has no lists to write to.")
+    name: str | None,
+    provider: ProviderType | None,
+    pick: Pick,
+) -> CredentialProfile:
+    if not profiles:
+        raise ConfigError(
+            "No credential profiles yet. Add one with "
+            "`pm creds add --name <name> --provider <clickup|linear> --token ...`."
+        )
 
-    if project_ids:
-        by_id = {p.id: p for p in projects}
-        refs = []
-        for wanted in project_ids:
-            project = by_id.get(wanted)
-            if project is None:
-                raise PMError(f"List {wanted} not found in this space. {_options(projects)}")
-            refs.append(ScopeProject(id=project.id, name=project.name))
-        return tuple(refs)
+    if name:
+        match = next((p for p in profiles if p.name == name), None)
+        if match is None:
+            raise PMError(
+                f"Profile {name!r} not found. Available: {', '.join(p.name for p in profiles)}."
+            )
+        if provider and match.provider_type is not provider:
+            raise PMError(
+                f"Profile {name!r} is for {match.provider_type.value}, not {provider.value}."
+            )
+        return match
 
-    raise NeedsChoice(
-        "Pick the list(s) this repo writes to. Re-run with --list-id <ID> (repeatable).",
-        {
-            "action": "choose-list",
-            "lists": [{"id": p.id, "name": p.name} for p in projects],
-        },
+    candidates = [p for p in profiles if provider is None or p.provider_type is provider]
+    if not candidates:
+        raise PMError(
+            f"No {provider.value if provider else ''} profile yet. Add one with "
+            f"`pm creds add --name <name> --provider {provider.value if provider else '<provider>'}`."
+        )
+    if len(candidates) == 1:
+        return candidates[0]
+
+    [chosen] = pick(
+        "Which credential does this repo use?",
+        [Option(p.name, f"{p.name} ({p.provider_type.value})") for p in candidates],
+        "--profile",
+        False,
     )
+    return next(p for p in candidates if p.name == chosen)
 
 
 def discover_scope(
     make_provider: Callable[[str | None], IssueProvider],
     *,
     workspace_id: str | None,
-    team_id: str | None = None,
-    project_ids: list[str] | None = None,
+    team_id: str | None,
+    project_ids: Sequence[str] | None,
+    pick: Pick,
 ) -> WriteScope:
-    """Resolve a full scope, pinning the provider as soon as the workspace is known.
+    """Takes a provider factory because spaces cannot be listed until the workspace is pinned."""
+    workspace = _pick_one(
+        make_provider(None).list_workspaces(),
+        workspace_id,
+        pick,
+        "Which workspace?",
+        "--workspace-id",
+    )
+    provider = make_provider(workspace.id)
+    team = _pick_one(provider.list_teams(), team_id, pick, "Which space?", "--space-id")
+    projects = _pick_many(provider.list_projects(team.id), project_ids, pick)
 
-    Takes a factory rather than a provider because the dependency is real: spaces
-    cannot be listed until the workspace is decided, and a provider is pinned for
-    its whole life.
-    """
-    resolved_workspace, workspace_name = resolve_workspace(make_provider(None), workspace_id)
-
-    provider = make_provider(resolved_workspace)
-    resolved_team_id, resolved_team_name = resolve_team(provider, team_id=team_id)
-    projects = resolve_projects(provider, resolved_team_id, project_ids=project_ids)
     return WriteScope(
-        workspace_id=resolved_workspace,
-        workspace_name=workspace_name,
-        team_id=resolved_team_id,
-        team_name=resolved_team_name,
-        projects=projects,
+        workspace_id=workspace.id,
+        workspace_name=workspace.name,
+        team_id=team.id,
+        team_name=team.name,
+        projects=tuple(ScopeProject(id=p.id, name=p.name) for p in projects),
     )
 
 
@@ -117,7 +113,7 @@ def verify_declared_scope(provider: IssueProvider, scope: WriteScope, source: Pa
     team = next((t for t in teams if t.id == scope.team_id), None)
     if team is None:
         raise PMError(
-            f"Space {scope.team_id} declared in {source} does not exist. {_options(teams)} "
+            f"Space {scope.team_id} declared in {source} does not exist. {_available(teams)} "
             "Re-run `pm init --force`."
         )
 
@@ -133,7 +129,7 @@ def verify_declared_scope(provider: IssueProvider, scope: WriteScope, source: Pa
         if project is None:
             raise PMError(
                 f"List {ref.id} ({ref.name or 'unnamed'}) declared in {source} is not in space "
-                f"{team.name}. {_options(list(projects.values()))} Re-run `pm init --force`."
+                f"{team.name}. {_available(list(projects.values()))} Re-run `pm init --force`."
             )
         if ref.name and project.name.lower() != ref.name.lower():
             warnings.append(
@@ -143,5 +139,42 @@ def verify_declared_scope(provider: IssueProvider, scope: WriteScope, source: Pa
     return warnings
 
 
-def _options(items: list) -> str:  # type: ignore[type-arg]
+def _pick_one(
+    items: Sequence[Item], wanted: str | None, pick: Pick, question: str, flag: str
+) -> Item:
+    if not items:
+        raise PMError(f"{question} There is nothing to choose from with this token.")
+    if wanted:
+        return _find(items, wanted)
+    if len(items) == 1:
+        return items[0]
+
+    [chosen] = pick(question, _as_options(items), flag, False)
+    return _find(items, chosen)
+
+
+def _pick_many(items: Sequence[Item], wanted: Sequence[str] | None, pick: Pick) -> list[Item]:
+    if not items:
+        raise PMError("This space has no lists to write to.")
+    if wanted:
+        return [_find(items, item_id) for item_id in wanted]
+    if len(items) == 1:
+        return [items[0]]
+
+    chosen = pick("Which list(s) does this repo write to?", _as_options(items), "--list-id", True)
+    return [_find(items, item_id) for item_id in chosen]
+
+
+def _find(items: Sequence[Item], item_id: str) -> Item:
+    match = next((i for i in items if i.id == item_id), None)
+    if match is None:
+        raise PMError(f"{item_id} not found. {_available(items)}")
+    return match
+
+
+def _as_options(items: Sequence[Item]) -> list[Option]:
+    return [Option(i.id, i.name) for i in items]
+
+
+def _available(items: Sequence[_Named]) -> str:
     return "Available: " + (", ".join(f"{i.name} ({i.id})" for i in items) or "(none)")

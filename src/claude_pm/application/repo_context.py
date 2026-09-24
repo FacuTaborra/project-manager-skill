@@ -41,8 +41,7 @@ class RepoContext:
     ) -> RepoContext:
         pm_file = load_pm_file(start)
         profile = load_profile(
-            profile_override or pm_file.profile_name,
-            provider=pm_file.provider_type,
+            profile_override or pm_file.profile_name, provider=pm_file.provider_type
         )
         _check_provider_match(pm_file, profile)
 
