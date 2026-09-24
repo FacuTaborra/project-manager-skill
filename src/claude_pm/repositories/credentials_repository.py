@@ -1,9 +1,4 @@
-"""File I/O for `~/.claude/pm/credentials.toml`.
-
-One token per profile, each pinned to the workspace it belongs to. A repo's
-`.pm.toml` names the profile it wants, so two ClickUp accounts can coexist and
-the token never lives inside a repo.
-"""
+"""One token per named profile, so two accounts can coexist and no token lives inside a repo."""
 
 from __future__ import annotations
 
@@ -27,7 +22,6 @@ _PROFILE_KEYS = {"provider", "token", "workspace_id"}
 
 
 def list_profiles(path: Path | None = None) -> list[CredentialProfile]:
-    """Every profile in the credentials file, in declaration order."""
     target = path or credentials_path()
     if not target.is_file():
         return []
@@ -41,7 +35,8 @@ def list_profiles(path: Path | None = None) -> list[CredentialProfile]:
     version = raw.get("version", CREDENTIALS_VERSION)
     if version != CREDENTIALS_VERSION:
         raise ConfigError(
-            f"{target}: unsupported version {version} (this build understands {CREDENTIALS_VERSION})."
+            f"{target}: unsupported version {version} "
+            f"(this build understands {CREDENTIALS_VERSION}). Upgrade pm."
         )
 
     table = raw.get("profiles", {})
@@ -116,7 +111,7 @@ def write_profiles(
 
 
 def _remove_profile_tables(text: str, names: set[str]) -> str:
-    """Drop the given [profiles.X] tables so --force can replace rather than duplicate."""
+    """Lets `--force` replace a profile instead of appending a duplicate table."""
     kept: list[str] = []
     dropping = False
     for line in text.splitlines():
@@ -125,19 +120,16 @@ def _remove_profile_tables(text: str, names: set[str]) -> str:
             dropping = any(stripped == f"[profiles.{name}]" for name in names)
         if not dropping:
             kept.append(line)
+
     return "\n".join(kept).rstrip() + "\n"
 
 
-def world_readable_warning(path: Path | None = None) -> str | None:
-    """Return a warning when the credentials file is readable beyond its owner.
-
-    Windows inherits directory ACLs and has no mode bits worth checking, so this
-    only reports on POSIX.
-    """
+def insecure_permissions_warning(path: Path | None = None) -> str | None:
+    """POSIX only: Windows inherits directory ACLs and has no mode bits worth checking."""
     target = path or credentials_path()
     if sys.platform == "win32" or not target.is_file():
         return None
-    mode = target.stat().st_mode
-    if mode & (stat.S_IRWXG | stat.S_IRWXO):
+    if target.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO):
         return f"{target} is readable by other users. Run: chmod 600 {target}"
+
     return None

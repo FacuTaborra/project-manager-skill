@@ -102,7 +102,7 @@ class TestFirstCredential:
             lambda *_a, **_kw: (ProviderType.CLICKUP, "pk_typed_by_hand", "urbs"),
         )
         monkeypatch.setattr(
-            init, "authenticate_token", lambda p, t: ("dev@example.com", [Team("w1", "One", "w1")])
+            init, "probe_token", lambda p, t: ("dev@example.com", [Team("w1", "One", "w1")])
         )
         monkeypatch.setattr(init, "print_profile_saved", lambda *a: None)
 

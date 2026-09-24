@@ -1,8 +1,5 @@
-"""What `pm init` needs to decide: which credential, workspace, space and lists.
-
-Every choice is resolved the same way: a flag wins, a single option is adopted,
-and anything else goes to `pick` — a menu for a person, an error naming the flag
-for everyone else.
+"""Every `pm init` choice resolves the same way: a flag wins, a single option is adopted,
+and anything else goes to `pick` (a menu for a person, an error naming the flag otherwise).
 """
 
 from __future__ import annotations
@@ -13,7 +10,7 @@ from typing import NamedTuple, Protocol, TypeVar
 
 from ..enums import ProviderType
 from ..exceptions import ConfigError, PMError
-from ..models.repo_config import CredentialProfile, ScopeProject, WriteScope
+from ..models.repo_config import CredentialProfile, ProjectRef, Scope
 from ..repositories.providers.base import IssueProvider
 
 
@@ -86,7 +83,7 @@ def discover_scope(
     team_id: str | None,
     project_ids: Sequence[str] | None,
     pick: Pick,
-) -> WriteScope:
+) -> Scope:
     """Takes a provider factory because spaces cannot be listed until the workspace is pinned."""
     workspace = _pick_one(
         make_provider(None).list_workspaces(),
@@ -99,16 +96,16 @@ def discover_scope(
     team = _pick_one(provider.list_teams(), team_id, pick, "Which space?", "--space-id")
     projects = _pick_many(provider.list_projects(team.id), project_ids, pick)
 
-    return WriteScope(
+    return Scope(
         workspace_id=workspace.id,
         workspace_name=workspace.name,
         team_id=team.id,
         team_name=team.name,
-        projects=tuple(ScopeProject(id=p.id, name=p.name) for p in projects),
+        projects=tuple(ProjectRef(id=p.id, name=p.name) for p in projects),
     )
 
 
-def verify_declared_scope(provider: IssueProvider, scope: WriteScope, source: Path) -> list[str]:
+def verify_declared_scope(provider: IssueProvider, scope: Scope, source: Path) -> list[str]:
     """Raise if the declared space or a list is gone; return warnings for renamed ones."""
     teams = provider.list_teams()
     team = next((t for t in teams if t.id == scope.team_id), None)

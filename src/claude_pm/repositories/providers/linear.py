@@ -1,5 +1,3 @@
-"""Linear adapter — implements the IssueProvider port via Linear's GraphQL API."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -20,21 +18,40 @@ from .http_client import HttpClient
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 
-_SEARCH_ISSUES_QUERY = """
-query($q: String!) {
-  searchIssues(term: $q, first: 20) {
-    nodes { identifier title state { id name }
-            project { id name } }
-  }
-}
+_SEARCH_PAGE_SIZE = 20
+_PROJECTS_PAGE_SIZE = 50
+_OPEN_ISSUES_PAGE_SIZE = 100
+_CLOSED_STATE_NAMES = '["Done", "Canceled", "Cancelled"]'
+
+_SEARCH_ISSUES_QUERY = f"""
+query($q: String!) {{
+  searchIssues(term: $q, first: {_SEARCH_PAGE_SIZE}) {{
+    nodes {{ identifier title state {{ id name }}
+            project {{ id name }} }}
+  }}
+}}
+"""
+
+_PROJECTS_QUERY = (
+    f"{{ projects(first: {_PROJECTS_PAGE_SIZE}) "
+    "{ nodes { id name state url teams { nodes { id } } } } }"
+)
+
+_OPEN_ISSUES_QUERY = f"""
+query($id: ID!) {{
+  issues(filter: {{project: {{id: {{eq: $id}}}},
+                  state: {{name: {{nin: {_CLOSED_STATE_NAMES}}}}}}},
+         first: {_OPEN_ISSUES_PAGE_SIZE}) {{
+    nodes {{ identifier title priority url state {{ id name }} }}
+  }}
+}}
 """
 
 
 class LinearProvider:
-    """Implements IssueProvider against Linear's GraphQL API.
+    """Personal API Keys go in the Authorization header without a `Bearer` prefix.
 
-    Linear's PAK is passed in the Authorization header WITHOUT a Bearer prefix —
-    that's specific to Personal API Keys, not OAuth tokens.
+    `workspace_id` is accepted for the factory contract but unused: a Linear token reaches one org.
     """
 
     def __init__(
@@ -46,7 +63,6 @@ class LinearProvider:
         auth_hint: str = "",
     ) -> None:
         self._http = http or HttpClient(headers={"Authorization": token}, auth_hint=auth_hint)
-        self._workspace_id = workspace_id
 
     def _query(self, graphql: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
         response = self._http.post_json(
@@ -63,10 +79,10 @@ class LinearProvider:
 
     def viewer_email(self) -> str:
         data = self._query("{ viewer { email } }")
-        viewer = data.get("viewer") or {}
-        email = viewer.get("email")
+        email = (data.get("viewer") or {}).get("email")
         if not isinstance(email, str):
             raise ProviderError("viewer.email missing in Linear response")
+
         return email
 
     def reachable_workspace_ids(self) -> list[str]:
@@ -98,9 +114,7 @@ class LinearProvider:
         return Team(id=team["id"], name=team["name"], key=team["key"])
 
     def list_projects(self, team_id: str | None = None) -> list[Project]:
-        data = self._query(
-            "{ projects(first: 50) { nodes { id name state url teams { nodes { id } } } } }"
-        )
+        data = self._query(_PROJECTS_QUERY)
         nodes = (data.get("projects") or {}).get("nodes") or []
         result = []
         for project_node in nodes:
@@ -116,6 +130,7 @@ class LinearProvider:
                     url=project_node.get("url"),
                 )
             )
+
         return result
 
     def create_project(self, name: str, team_id: str) -> Project:
@@ -157,30 +172,21 @@ class LinearProvider:
         nodes = (data.get("users") or {}).get("nodes") or []
         if not nodes:
             return None
-        user_node = nodes[0]
-        return User(id=user_node["id"], email=user_node["email"], name=user_node["name"])
+
+        return User(id=nodes[0]["id"], email=nodes[0]["email"], name=nodes[0]["name"])
 
     def list_open_issues(self, project_id: str) -> list[Issue]:
-        graphql = """
-        query($id: ID!) {
-          issues(filter: {project: {id: {eq: $id}},
-                          state: {name: {nin: ["Done", "Canceled", "Cancelled"]}}},
-                 first: 100) {
-            nodes { identifier title priority url state { id name } }
-          }
-        }
-        """
-        data = self._query(graphql, {"id": project_id})
+        data = self._query(_OPEN_ISSUES_QUERY, {"id": project_id})
         nodes = (data.get("issues") or {}).get("nodes") or []
         return [_to_issue(n) for n in nodes]
 
     def search_issues(self, query: str, *, project_id: str | None = None) -> list[Issue]:
         data = self._query(_SEARCH_ISSUES_QUERY, {"q": query})
         nodes = (data.get("searchIssues") or {}).get("nodes") or []
-
         issues = [_to_issue(n, with_project=True) for n in nodes]
         if project_id:
             issues = [i for i in issues if i.project is not None and i.project.id == project_id]
+
         return issues
 
     def create_issue(self, draft: IssueDraft) -> Issue:
@@ -207,6 +213,7 @@ class LinearProvider:
         result = data.get("issueCreate") or {}
         if not result.get("success"):
             raise ProviderError(f"issueCreate failed: {result}")
+
         return _to_issue(result["issue"])
 
     def get_issue(self, issue_id: str) -> Issue:
@@ -230,7 +237,6 @@ class LinearProvider:
         nodes = (data.get("issues") or {}).get("nodes") or []
         if not nodes:
             raise ProviderError(f"Issue '{update.issue_id}' not found.")
-        issue_uuid = nodes[0]["id"]
 
         issue_input: dict[str, Any] = {}
         if update.title is not None:
@@ -245,35 +251,32 @@ class LinearProvider:
             issue_input["assigneeId"] = update.assignee_id
 
         data = self._query(
-            "mutation($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) "
+            "mutation($id: String!, $input: IssueUpdateInput!) "
+            "{ issueUpdate(id: $id, input: $input) "
             "{ success issue { id identifier url title state { id name } } } }",
-            {"id": issue_uuid, "input": issue_input},
+            {"id": nodes[0]["id"], "input": issue_input},
         )
         result = data.get("issueUpdate") or {}
         if not result.get("success"):
             raise ProviderError(f"issueUpdate failed: {result}")
+
         return _to_issue(result["issue"])
-
-
-# ---------------------------------------------------------------------------
-# Mappers
-# ---------------------------------------------------------------------------
 
 
 def _to_issue(
     node: dict[str, Any], *, with_project: bool = False, with_description: bool = False
 ) -> Issue:
     state_node = node.get("state") or {}
-    state = State(id=state_node.get("id", ""), name=state_node.get("name", "Unknown"))
     project: Project | None = None
     if with_project:
         proj_node = node.get("project")
         if proj_node:
             project = Project(id=proj_node["id"], name=proj_node["name"])
+
     return Issue(
         identifier=node["identifier"],
         title=node["title"],
-        state=state,
+        state=State(id=state_node.get("id", ""), name=state_node.get("name", "Unknown")),
         priority=int(node.get("priority", 0) or 0),
         url=node.get("url"),
         project=project,

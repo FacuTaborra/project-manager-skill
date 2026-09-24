@@ -1,5 +1,3 @@
-"""Ports — Protocols defining what an issue tracker / context source must provide."""
-
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -19,85 +17,49 @@ from ...models.tracker import (
 
 
 class IssueProvider(Protocol):
-    """Adapter contract for any issue tracker (Linear, GitHub, Jira, ...).
-
-    Implementations live in pm.infrastructure.providers and are wired through
-    pm.infrastructure.providers._registry. To add a new provider, see
-    CONTRIBUTING.md.
-    """
-
-    def viewer_email(self) -> str:
-        """Return the email of the authenticated user (used by `doctor`)."""
-        ...
+    def viewer_email(self) -> str: ...
 
     def reachable_workspace_ids(self) -> list[str]:
-        """Workspaces/organizations this token can reach.
-
-        Linear returns its single `organization.id`, ClickUp every team id.
-        `pm doctor` compares this against the workspace declared in `.pm.toml`.
-        """
+        """Linear returns its single `organization.id`, ClickUp every team id."""
         ...
 
     def list_workspaces(self) -> list[Workspace]:
-        """Workspaces with their names — discovery only, for `pm init`."""
+        """Discovery only, for `pm init`."""
         ...
 
-    def list_teams(self) -> list[Team]:
-        """List all teams the authenticated user belongs to."""
-        ...
+    def list_teams(self) -> list[Team]: ...
 
-    def create_team(self, name: str) -> Team:
-        """Create a new team."""
-        ...
+    def create_team(self, name: str) -> Team: ...
 
-    def list_projects(self, team_id: str | None = None) -> list[Project]:
-        """List projects, optionally filtered by team."""
-        ...
+    def list_projects(self, team_id: str | None = None) -> list[Project]: ...
 
-    def create_project(self, name: str, team_id: str) -> Project:
-        """Create a new project in the given team."""
-        ...
+    def create_project(self, name: str, team_id: str) -> Project: ...
 
-    def list_states(self, team_id: str) -> list[State]:
-        """List workflow states defined for the given team."""
-        ...
+    def list_states(self, team_id: str) -> list[State]: ...
 
-    def list_labels(self, team_id: str) -> list[Label]:
-        """List labels defined for the given team."""
-        ...
+    def list_labels(self, team_id: str) -> list[Label]: ...
 
-    def resolve_user_by_email(self, email: str) -> User | None:
-        """Find a workspace member by email. Returns None if not found."""
-        ...
+    def resolve_user_by_email(self, email: str) -> User | None: ...
 
-    def list_open_issues(self, project_id: str) -> list[Issue]:
-        """List non-closed issues in the project."""
-        ...
+    def list_open_issues(self, project_id: str) -> list[Issue]: ...
 
-    def search_issues(self, query: str, *, project_id: str | None = None) -> list[Issue]:
-        """Full-text search. If project_id is provided, scope results to that project."""
-        ...
+    def search_issues(self, query: str, *, project_id: str | None = None) -> list[Issue]: ...
 
-    def create_issue(self, draft: IssueDraft) -> Issue:
-        """Create a new issue from the given draft."""
-        ...
+    def create_issue(self, draft: IssueDraft) -> Issue: ...
 
     def get_issue(self, issue_id: str) -> Issue:
-        """Fetch a single issue by ID or identifier, including its description."""
+        """Accepts an id or an identifier; includes the description."""
         ...
 
     def update_issue(self, update: IssueUpdate) -> Issue:
-        """Update an existing issue. Only fields set (not None) are changed."""
+        """Only the fields that are not None are changed."""
         ...
 
 
 @runtime_checkable
 class DocProvider(Protocol):
-    """Optional capability: trackers with workspace-level documents (ClickUp).
-
-    Kept out of `IssueProvider` so an adapter without docs is still a complete
-    provider. The scope guard checks for it at runtime and refuses with a
-    readable message instead of an `AttributeError`.
+    """Kept out of `IssueProvider` so an adapter without docs is still complete; the guard checks
+    for it at runtime and refuses with a readable message instead of an `AttributeError`.
     """
 
     def create_doc(self, title: str, content: str | None) -> Doc:

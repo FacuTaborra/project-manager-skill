@@ -1,11 +1,9 @@
-"""BriefingService — open issues grouped by state."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
 
-from ..models.repo_config import ScopeProject
+from ..models.repo_config import ProjectRef
 from ..models.tracker import Briefing, Issue
 from ..repositories.providers.base import IssueProvider
 
@@ -15,36 +13,36 @@ class BriefingService:
         self.provider = provider
 
     def generate_per_project(
-        self, *, projects: Sequence[ScopeProject], repo_name: str
+        self, *, projects: Sequence[ProjectRef], repo_name: str
     ) -> dict[str, Any]:
         sections = []
-        for proj in projects:
-            issues = self.provider.list_open_issues(proj.id)
-            grouped: dict[str, list[Issue]] = {}
-            for issue in issues:
-                grouped.setdefault(issue.state.name, []).append(issue)
+        for project in projects:
+            issues = self.provider.list_open_issues(project.id)
             sections.append(
                 {
-                    "project": proj.name or proj.id,
-                    "project_id": proj.id,
-                    "issues_by_state": grouped,
+                    "project": project.name or project.id,
+                    "project_id": project.id,
+                    "issues_by_state": _group_by_state(issues),
                     "total_open": len(issues),
                 }
             )
-        return {
-            "repo": repo_name,
-            "projects": sections,
-        }
+
+        return {"repo": repo_name, "projects": sections}
 
     def generate(self, *, project_id: str, project_name: str, repo_name: str) -> Briefing:
         issues = self.provider.list_open_issues(project_id)
-        grouped: dict[str, list[Issue]] = {}
-        for issue in issues:
-            grouped.setdefault(issue.state.name, []).append(issue)
 
         return Briefing(
             repo_name=repo_name,
             project_name=project_name,
-            issues_by_state=grouped,
+            issues_by_state=_group_by_state(issues),
             total_open=len(issues),
         )
+
+
+def _group_by_state(issues: Sequence[Issue]) -> dict[str, list[Issue]]:
+    grouped: dict[str, list[Issue]] = {}
+    for issue in issues:
+        grouped.setdefault(issue.state.name, []).append(issue)
+
+    return grouped

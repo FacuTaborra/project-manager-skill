@@ -39,7 +39,7 @@ def search(args: Namespace) -> int:
 def create(args: Namespace) -> int:
     description = read_text_arg(args.description_file, "Description") or args.description
     if not description:
-        raise PMError("Either --description or --description-file is required.")
+        raise PMError("Pass --description or --description-file.")
 
     outcome = get_scope_guard(args).create_issue(
         title=args.title,

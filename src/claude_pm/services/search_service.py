@@ -1,5 +1,3 @@
-"""SearchService — duplicate detection before plan mode proposes new issues."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -13,11 +11,7 @@ class SearchService:
         self.provider = provider
 
     def search_issues(self, query: str, *, project_ids: Sequence[str] | None = None) -> list[Issue]:
-        """Search every list in scope, not just the first.
-
-        Missing a duplicate here is not a small error: it is how a ticket that
-        already exists gets proposed and created again.
-        """
+        """Every list in scope, not just the first: a missed duplicate gets created again."""
         if not project_ids:
             return self.provider.search_issues(query)
 

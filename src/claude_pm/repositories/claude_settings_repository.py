@@ -1,10 +1,4 @@
-"""Register the permissions the skill needs in `~/.claude/settings.json`.
-
-This is the one place pm writes outside the repo and the tracker, and it widens
-what Claude Code may run without asking. It used to happen as a silent side
-effect of `pm setup`; now it only happens when someone asks for it, and it can
-be previewed first.
-"""
+"""The one place pm writes outside the repo and the tracker, so it only runs when asked."""
 
 from __future__ import annotations
 
@@ -22,20 +16,16 @@ REQUIRED_PERMISSIONS = [
 
 
 def missing_permissions(path: Path | None = None) -> list[str]:
-    """Which required entries are not in the allow list yet."""
     settings = _read(path or settings_path())
     allow = settings.get("permissions", {}).get("allow", [])
-    allow_set = set(allow) if isinstance(allow, list) else set()
-    return [entry for entry in REQUIRED_PERMISSIONS if entry not in allow_set]
+    granted = set(allow) if isinstance(allow, list) else set()
+
+    return [entry for entry in REQUIRED_PERMISSIONS if entry not in granted]
 
 
 def register_permissions(path: Path | None = None) -> tuple[list[str], list[str]]:
-    """Add the missing entries. Returns (added, still_missing).
-
-    The file is read back afterwards because Claude Code owns it and rewrites it
-    while running: a concurrent save can drop what we just appended. Reporting
-    `added` without checking would tell the user the permission is in place when
-    it silently is not.
+    """Returns (added, still_missing), read back from disk: Claude Code rewrites this file while
+    running, and a concurrent save can drop what was just appended.
     """
     target = path or settings_path()
     missing = missing_permissions(target)
@@ -43,8 +33,7 @@ def register_permissions(path: Path | None = None) -> tuple[list[str], list[str]
         return [], []
 
     settings = _read(target, strict=True)
-    perms = settings.setdefault("permissions", {})
-    allow = perms.setdefault("allow", [])
+    allow = settings.setdefault("permissions", {}).setdefault("allow", [])
     if not isinstance(allow, list):
         raise ConfigError(f"{target}: permissions.allow is not a list. Fix it by hand and re-run.")
     allow.extend(missing)
@@ -56,6 +45,7 @@ def register_permissions(path: Path | None = None) -> tuple[list[str], list[str]
     )
 
     still_missing = missing_permissions(target)
+
     return [entry for entry in missing if entry not in still_missing], still_missing
 
 
@@ -75,4 +65,5 @@ def _read(path: Path, *, strict: bool = False) -> dict[str, Any]:
         return data
     if strict:
         raise ConfigError(f"{path} does not hold a JSON object. Fix it by hand and re-run.")
+
     return {}

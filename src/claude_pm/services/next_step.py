@@ -1,9 +1,5 @@
-"""What stands between this machine and a working `/pm`.
-
-Setup is a short chain and every link has one obvious next command. Rather than
-leaving a reader — usually Claude — to infer the order from the README, the tool
-reports the next step itself. `doctor`, `creds add`, `init` and
-`install-skill` all print it, so wherever you land you are told where to go.
+"""The next setup command, printed by `doctor`, `creds add`, `init` and `install-skill`
+so the reader (usually Claude) never has to infer the order from the README.
 """
 
 from __future__ import annotations
@@ -20,8 +16,6 @@ from ..repositories.git_repo import find_pm_file, find_repo_root
 
 @dataclass(frozen=True)
 class Step:
-    """One thing to do, with the command that does it."""
-
     why: str
     command: str
     hint: str = ""
@@ -39,7 +33,6 @@ READY = Step(
 
 
 def next_step(start: Path | None = None) -> Step:
-    """The first unmet requirement, or READY."""
     for check in (_skill_step, _credentials_step):
         if step := check():
             return step

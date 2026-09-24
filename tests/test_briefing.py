@@ -12,10 +12,10 @@ from src.claude_pm.commands import briefing
 from src.claude_pm.enums import ProviderType
 from src.claude_pm.models.repo_config import (
     CredentialProfile,
-    RepoBinding,
+    PmFile,
+    ProjectRef,
     RepoConfig,
-    ScopeProject,
-    WriteScope,
+    Scope,
 )
 from src.claude_pm.models.tracker import Issue, State
 
@@ -28,14 +28,14 @@ class FakeProvider:
         ]
 
 
-def _run(projects: tuple[ScopeProject, ...], monkeypatch, capsys) -> dict:
+def _run(projects: tuple[ProjectRef, ...], monkeypatch, capsys) -> dict:
     config = RepoConfig(
-        pm_file=RepoBinding(
+        pm_file=PmFile(
             path=Path("/repo/.pm.toml"),
             repo_root=Path("/repo"),
             provider_type=ProviderType.CLICKUP,
             profile_name="p",
-            scope=WriteScope(workspace_id="ws", team_id="t", projects=projects),
+            scope=Scope(workspace_id="ws", team_id="t", projects=projects),
         ),
         profile=CredentialProfile("p", ProviderType.CLICKUP, "pk_x"),
     )
@@ -46,7 +46,7 @@ def _run(projects: tuple[ScopeProject, ...], monkeypatch, capsys) -> dict:
 
 
 def test_a_single_list_is_flat(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    output = _run((ScopeProject(id="l1", name="Main"),), monkeypatch, capsys)
+    output = _run((ProjectRef(id="l1", name="Main"),), monkeypatch, capsys)
     assert output["project"] == "Main"
     assert output["repo"] == "repo"
     assert output["total_open"] == 2
@@ -57,7 +57,7 @@ def test_several_lists_come_as_sections_in_pm_toml_order(
     monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     output = _run(
-        (ScopeProject(id="l2", name="Second"), ScopeProject(id="l1", name="First")),
+        (ProjectRef(id="l2", name="Second"), ProjectRef(id="l1", name="First")),
         monkeypatch,
         capsys,
     )

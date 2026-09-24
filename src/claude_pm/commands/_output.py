@@ -41,12 +41,8 @@ def briefing_to_dict(briefing: Briefing) -> dict[str, Any]:
     }
 
 
-def print_write_outcome(outcome: Any, to_json: Callable[[Any], dict[str, Any]]) -> None:
-    """Print a dry-run preview, or the real result via `to_json`."""
-    if isinstance(outcome, DryRun):
-        print_json(outcome.to_dict())
-    else:
-        print_json(to_json(outcome))
+def print_write_outcome(outcome: Any, serialize: Callable[[Any], dict[str, Any]]) -> None:
+    print_json(outcome.to_dict() if isinstance(outcome, DryRun) else serialize(outcome))
 
 
 def print_json(payload: dict[str, Any]) -> None:

@@ -1,9 +1,4 @@
-"""`doctor` — report where this machine stands, and what to do next.
-
-Degrades by stage instead of failing on the first missing piece. A diagnostic
-that only works once everything is configured is useless exactly when it is
-needed most.
-"""
+"""`doctor` — degrades by stage, since a diagnostic that needs everything configured is useless."""
 
 from __future__ import annotations
 
@@ -15,7 +10,7 @@ from ..dependencies.provider import get_provider
 from ..dependencies.repo_config import get_repo_config
 from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError
 from ..models.repo_config import RepoConfig
-from ..repositories.credentials_repository import list_profiles, world_readable_warning
+from ..repositories.credentials_repository import insecure_permissions_warning, list_profiles
 from ..repositories.git_repo import find_pm_file
 from ..services.next_step import next_step
 from ..services.scope_discovery_service import verify_declared_scope
@@ -42,11 +37,12 @@ def run(args: argparse.Namespace) -> int:
         return EXIT_ERROR
 
     _report_config(config)
+
     return _report_connectivity(config)
 
 
 def _report_credentials() -> bool:
-    """Print the credentials line. False when there is nothing usable yet."""
+    """False when there is nothing usable yet."""
     path = credentials_path()
     try:
         profiles = list_profiles(path)
@@ -60,8 +56,9 @@ def _report_credentials() -> bool:
 
     names = ", ".join(f"{p.name} ({p.provider_type.value})" for p in profiles)
     print(f"  Credentials:   {names}")
-    if warning := world_readable_warning(path):
+    if warning := insecure_permissions_warning(path):
         print(f"  WARNING:       {warning}")
+
     return True
 
 
@@ -105,4 +102,5 @@ def _report_connectivity(config: RepoConfig) -> int:
     for warning in warnings:
         print(f"  WARNING:       {warning}")
     print(next_step().render())
+
     return EXIT_OK

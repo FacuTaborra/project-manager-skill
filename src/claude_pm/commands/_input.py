@@ -1,7 +1,5 @@
-"""Everything a command reads from its caller: prompts, when a person is at the keyboard, and file flags.
-
-Without a person (Claude, CI, or `--no-input`) commands fail naming the flag to pass instead.
-"""
+"""Prompts when a person is at the keyboard; without one (Claude, CI, `--no-input`) commands fail
+naming the flag to pass instead."""
 
 from __future__ import annotations
 
@@ -31,7 +29,6 @@ class Choice:
 
 
 def is_interactive() -> bool:
-    """True when there is a human to answer."""
     try:
         return bool(sys.stdin.isatty() and sys.stdout.isatty())
     except (AttributeError, ValueError):
@@ -62,7 +59,6 @@ def ask_secret(question: str) -> str:
 
 
 def choose(question: str, options: Sequence[Choice], *, multi: bool = False) -> list[str]:
-    """Numbered menu. Returns the chosen ids, in the order they were offered."""
     if not options:
         raise PMError(f"{question} — no options to choose from.")
     if len(options) == 1 and not multi:
@@ -85,7 +81,7 @@ def choose(question: str, options: Sequence[Choice], *, multi: bool = False) -> 
 
 
 def _parse_selection(raw: str, count: int, *, multi: bool) -> list[int]:
-    """Indexes chosen from a 1-based menu, or empty when the answer makes no sense."""
+    """Empty when the answer makes no sense, so the caller asks again."""
     cleaned = raw.strip()
     if not cleaned:
         return []
@@ -119,7 +115,6 @@ def can_prompt(args: Any) -> bool:
 
 
 def read_text_arg(path: str | None, what: str) -> str | None:
-    """`what` names the flag in the error, so it points back at the file argument being read."""
     if not path:
         return None
 
@@ -141,10 +136,9 @@ def ask_provider() -> ProviderType:
 def credential_fields(
     provider: ProviderType | None, token: str | None, name: str | None, *, may_prompt: bool
 ) -> tuple[ProviderType, str, str]:
-    """Shared by `pm creds add` and the `pm init` wizard: ask for what the flags left out."""
     if provider is None:
         if not may_prompt:
-            raise PMError("Missing --provider. Supported: linear, clickup.")
+            raise PMError("Pass --provider linear or --provider clickup.")
         provider = ask_provider()
 
     if not token:
@@ -157,7 +151,7 @@ def credential_fields(
 
     if not name:
         if not may_prompt:
-            raise PMError("Missing --name for the profile.")
+            raise PMError("Pass --name to name the profile.")
         name = ask("Name for this profile", default=provider.value)
 
     return provider, token.strip(), name

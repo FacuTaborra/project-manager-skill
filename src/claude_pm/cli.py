@@ -1,9 +1,5 @@
-"""Argparse dispatch + main entry point.
-
-Shared flags come from parent parsers rather than the root parser: with
-subparsers, a flag declared on the root is overwritten by the subparser's own
-default in the same Namespace. So it is `pm create-issue --dry-run`, never
-`pm --dry-run create-issue`.
+"""Shared flags come from parent parsers, not the root: a root flag is overwritten by the
+subparser's own default, so it is `pm create-issue --dry-run`, never `pm --dry-run create-issue`.
 """
 
 from __future__ import annotations
@@ -15,15 +11,11 @@ import sys
 
 from . import __version__
 from .commands import board, briefing, creds, docs, doctor, init, install_skill, issues
-from .exceptions import EXIT_ERROR, EXIT_OK, NeedsChoice, PMError
+from .exceptions import EXIT_ERROR, EXIT_INTERRUPTED, NeedsChoice, PMError
 
 
 def _force_utf8_stdio() -> None:
-    """Reconfigure stdout/stderr to UTF-8.
-
-    Windows defaults to cp1252 which mangles em-dashes, accents, and emoji that
-    appear in briefings and JSON output. Safe no-op on POSIX.
-    """
+    """Windows defaults to cp1252, which mangles the accents and dashes in briefings and JSON."""
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
@@ -31,7 +23,7 @@ def _force_utf8_stdio() -> None:
                 reconfigure(encoding="utf-8", errors="replace")
 
 
-def _common_parser() -> argparse.ArgumentParser:
+def _repo_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--profile",
@@ -42,12 +34,7 @@ def _common_parser() -> argparse.ArgumentParser:
 
 
 def _dry_run_parser(help_text: str | None = None) -> argparse.ArgumentParser:
-    """A standalone `--dry-run` flag for commands that don't take the `write` parent.
-
-    `create-issue` and friends get `--dry-run` from `_write_parser` instead —
-    this is only for the setup-side commands (`init`, `creds add`,
-    `install-skill`) whose dry run is a preview, not a scope check.
-    """
+    """For setup commands, whose dry run is a preview rather than a scope check."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--dry-run", action="store_true", help=help_text)
     return parser
@@ -60,8 +47,8 @@ def _no_input_parser(help_text: str | None = None) -> argparse.ArgumentParser:
     return parser
 
 
-def _write_parser(common: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(add_help=False, parents=[common])
+def _write_parser(repo: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(add_help=False, parents=[repo])
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -70,7 +57,7 @@ def _write_parser(common: argparse.ArgumentParser) -> argparse.ArgumentParser:
     return parser
 
 
-def _structural_parser(write: argparse.ArgumentParser) -> argparse.ArgumentParser:
+def _structural_write_parser(write: argparse.ArgumentParser) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False, parents=[write])
     parser.add_argument(
         "--allow-structural-changes",
@@ -82,19 +69,21 @@ def _structural_parser(write: argparse.ArgumentParser) -> argparse.ArgumentParse
 
 def _add_setup_commands(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
-    common: argparse.ArgumentParser,
+    repo: argparse.ArgumentParser,
 ) -> None:
     """`init`, `creds`, `install-skill`, `doctor` — onboarding and diagnostics."""
     p_init = sub.add_parser(
         "init",
         parents=[
-            common,
             _dry_run_parser("Print the TOML, write nothing."),
             _no_input_parser(
                 "Never prompt; fail listing the options and the flag to pass. For non-human callers."
             ),
         ],
         help="Write this repo's .pm.toml.",
+    )
+    p_init.add_argument(
+        "--profile", default=None, help="Credential profile this repo's .pm.toml will name."
     )
     p_init.add_argument("--provider", default=None, help="linear | clickup.")
     p_init.add_argument("--workspace-id", default=None)
@@ -143,20 +132,20 @@ def _add_setup_commands(
     p_install.add_argument("--skip-permissions", action="store_true", help="Install SKILL.md only.")
     p_install.set_defaults(func=install_skill.run)
 
-    p_doctor = sub.add_parser("doctor", parents=[common], help="Diagnose configuration.")
+    p_doctor = sub.add_parser("doctor", parents=[repo], help="Diagnose configuration.")
     p_doctor.set_defaults(func=doctor.run)
 
 
 def _add_read_commands(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
-    common: argparse.ArgumentParser,
+    repo: argparse.ArgumentParser,
 ) -> None:
     """Everything that only looks at the tracker."""
-    p_brief = sub.add_parser("briefing", parents=[common], help="Open issues grouped by state.")
+    p_brief = sub.add_parser("briefing", parents=[repo], help="Open issues grouped by state.")
     p_brief.set_defaults(func=briefing.run)
 
     p_search = sub.add_parser(
-        "search", parents=[common], help="Search issues for duplicate detection."
+        "search", parents=[repo], help="Search issues for duplicate detection."
     )
     p_search.add_argument("query")
     p_search.add_argument(
@@ -167,25 +156,25 @@ def _add_read_commands(
     p_search.set_defaults(func=issues.search)
 
     p_get = sub.add_parser(
-        "get-issue", parents=[common], help="Fetch a single issue, including its description."
+        "get-issue", parents=[repo], help="Fetch a single issue, including its description."
     )
     p_get.add_argument("--id", required=True, help="Issue identifier (e.g. FAC-12 or a task id).")
     p_get.set_defaults(func=issues.get)
 
-    p_teams = sub.add_parser("list-teams", parents=[common], help="List spaces/teams.")
+    p_teams = sub.add_parser("list-teams", parents=[repo], help="List spaces/teams.")
     p_teams.set_defaults(func=board.list_teams)
 
-    p_projects = sub.add_parser("list-projects", parents=[common], help="List lists/projects.")
+    p_projects = sub.add_parser("list-projects", parents=[repo], help="List lists/projects.")
     p_projects.add_argument("--team-id", default=None, help="Space/team id; defaults to the scope.")
     p_projects.set_defaults(func=board.list_projects)
 
-    p_states = sub.add_parser("list-states", parents=[common], help="List workflow states.")
+    p_states = sub.add_parser("list-states", parents=[repo], help="List workflow states.")
     p_states.set_defaults(func=board.list_states)
 
-    p_labels = sub.add_parser("list-labels", parents=[common], help="List labels/tags.")
+    p_labels = sub.add_parser("list-labels", parents=[repo], help="List labels/tags.")
     p_labels.set_defaults(func=board.list_labels)
 
-    p_user = sub.add_parser("resolve-user", parents=[common], help="Resolve a user id by email.")
+    p_user = sub.add_parser("resolve-user", parents=[repo], help="Resolve a user id by email.")
     p_user.add_argument("email")
     p_user.set_defaults(func=board.resolve_user)
 
@@ -265,9 +254,9 @@ def _add_write_commands(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    common = _common_parser()
-    write = _write_parser(common)
-    structural = _structural_parser(write)
+    repo = _repo_parser()
+    write = _write_parser(repo)
+    structural = _structural_write_parser(write)
 
     parser = argparse.ArgumentParser(
         prog="pm",
@@ -276,8 +265,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    _add_setup_commands(sub, common)
-    _add_read_commands(sub, common)
+    _add_setup_commands(sub, repo)
+    _add_read_commands(sub, repo)
     _add_write_commands(sub, write, structural)
 
     return parser
@@ -285,11 +274,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     _force_utf8_stdio()
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    args = build_parser().parse_args(argv)
     try:
-        result = args.func(args)
-        return int(result) if result is not None else EXIT_OK
+        return int(args.func(args))
     except NeedsChoice as e:
         print(json.dumps(e.payload, indent=2, ensure_ascii=False))
         print(str(e), file=sys.stderr)
@@ -307,4 +294,4 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_ERROR
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
-        return 130
+        return EXIT_INTERRUPTED

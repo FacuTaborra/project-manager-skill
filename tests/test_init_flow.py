@@ -12,8 +12,8 @@ from src.claude_pm.exceptions import ConfigError, PMError
 from src.claude_pm.models.repo_config import (
     CredentialProfile,
     IssueDefaults,
-    ScopeProject,
-    WriteScope,
+    ProjectRef,
+    Scope,
 )
 from src.claude_pm.models.tracker import Project, Team
 from src.claude_pm.repositories.pm_file_repository import parse_pm_file, render_pm_toml
@@ -160,13 +160,13 @@ class TestChooseProfile:
 
 
 class TestRenderPmToml:
-    def _scope(self) -> WriteScope:
-        return WriteScope(
+    def _scope(self) -> Scope:
+        return Scope(
             workspace_id="ws-1",
             workspace_name="Hemisphere",
             team_id="space-1",
             team_name="4plus",
-            projects=(ScopeProject(id="list-1", name="modulo-energia"),),
+            projects=(ProjectRef(id="list-1", name="modulo-energia"),),
         )
 
     def test_what_it_writes_parses_back_identically(self) -> None:
@@ -191,21 +191,21 @@ class TestRenderPmToml:
         assert "[defaults]" not in rendered
 
     def test_quotes_in_names_are_escaped(self) -> None:
-        scope = WriteScope(
+        scope = Scope(
             workspace_id="ws",
             team_id="sp",
             team_name='the "main" space',
-            projects=(ScopeProject(id="l", name="a\\b"),),
+            projects=(ProjectRef(id="l", name="a\\b"),),
         )
         rendered = render_pm_toml(provider_name="linear", profile_name="p", scope=scope)
         assert tomllib.loads(rendered)["scope"]["space_name"] == 'the "main" space'
         assert tomllib.loads(rendered)["scope"]["lists"][0]["name"] == "a\\b"
 
     def test_several_lists_round_trip(self) -> None:
-        scope = WriteScope(
+        scope = Scope(
             workspace_id="ws",
             team_id="sp",
-            projects=(ScopeProject(id="a", name="A"), ScopeProject(id="b", name="B")),
+            projects=(ProjectRef(id="a", name="A"), ProjectRef(id="b", name="B")),
         )
         rendered = render_pm_toml(provider_name="clickup", profile_name="p", scope=scope)
         assert parse_pm_file(rendered, path=Path("/x/.pm.toml")).scope.project_ids == {"a", "b"}
@@ -214,15 +214,15 @@ class TestRenderPmToml:
 class TestVerifyDeclaredScope:
     SOURCE = Path("/repo/.pm.toml")
 
-    def _scope(self, **overrides) -> WriteScope:
+    def _scope(self, **overrides) -> Scope:
         fields = {
             "workspace_id": "ws-1",
             "team_id": "space-1",
             "team_name": "4plus",
-            "projects": (ScopeProject(id="list-1", name="modulo-energia"),),
+            "projects": (ProjectRef(id="list-1", name="modulo-energia"),),
         }
         fields.update(overrides)
-        return WriteScope(**fields)
+        return Scope(**fields)
 
     def test_an_intact_board_has_no_warnings(self) -> None:
         assert verify_declared_scope(FakeProvider(), self._scope(), self.SOURCE) == []
@@ -232,11 +232,11 @@ class TestVerifyDeclaredScope:
             verify_declared_scope(FakeProvider(), self._scope(team_id="ghost"), self.SOURCE)
 
     def test_a_missing_list_names_what_exists(self) -> None:
-        scope = self._scope(projects=(ScopeProject(id="ghost", name="x"),))
+        scope = self._scope(projects=(ProjectRef(id="ghost", name="x"),))
         with pytest.raises(PMError, match="modulo-energia"):
             verify_declared_scope(FakeProvider(), scope, self.SOURCE)
 
     def test_a_renamed_list_is_a_warning(self) -> None:
-        scope = self._scope(projects=(ScopeProject(id="list-1", name="old-name"),))
+        scope = self._scope(projects=(ProjectRef(id="list-1", name="old-name"),))
         [warning] = verify_declared_scope(FakeProvider(), scope, self.SOURCE)
         assert "now named 'modulo-energia'" in warning

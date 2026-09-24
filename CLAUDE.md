@@ -80,10 +80,18 @@ en que ClickUp devolviera la respuesta.
 
 ## Estilo
 
-- Nada de comentarios `#` intercalados en medio de una función. Si hace falta explicar el *por qué*,
-  va en el docstring. Un comentario breve arriba de una constante o un campo está bien.
-- Docstrings que expliquen por qué existe algo, no qué hace la línea de abajo.
-- Mensajes de error que digan qué hacer después. Estos archivos se editan a mano.
+La referencia es hemisphere-automations: código que se explica solo por los nombres.
+
+- **Sin docstrings por defecto.** Sólo una o dos líneas cuando el *por qué* no sale de los nombres
+  (el invariante de `ScopeGuard`, por ejemplo). Nunca una que repita el nombre de la función.
+- **Sin docstrings que cuenten historia** ("antes era…", "el formato viejo…"). Eso va en el commit.
+- Nada de comentarios `#` en medio de una función ni banners `# -- sección --`. Un comentario breve
+  arriba de una constante está bien.
+- Sin variables que se usan una sola vez para nombrar un paso intermedio: la expresión directa.
+- Inyección por constructor, kwargs en las llamadas, métodos cortos, línea en blanco antes del
+  `return` final.
+- Números y strings mágicos → constantes de módulo.
+- Mensajes de error de una oración que digan qué hacer después. Estos archivos se editan a mano.
 - `mypy --strict` pasa. Mantenelo así.
 
 ## Tests

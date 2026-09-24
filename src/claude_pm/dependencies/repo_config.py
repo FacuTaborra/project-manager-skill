@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import Namespace
 
 from ..exceptions import ConfigError
-from ..models.repo_config import CredentialProfile, RepoBinding, RepoConfig
+from ..models.repo_config import CredentialProfile, PmFile, RepoConfig
 from ..repositories.pm_file_repository import load_pm_file
 from ..services.credential_service import load_profile
 
@@ -16,7 +16,7 @@ def get_repo_config(args: Namespace) -> RepoConfig:
     return RepoConfig(pm_file=pm_file, profile=profile)
 
 
-def _check_profile_matches(pm_file: RepoBinding, profile: CredentialProfile) -> None:
+def _check_profile_matches(pm_file: PmFile, profile: CredentialProfile) -> None:
     if profile.provider_type is not pm_file.provider_type:
         raise ConfigError(
             f"{pm_file.path} wants provider {pm_file.provider_type.value!r} but profile "

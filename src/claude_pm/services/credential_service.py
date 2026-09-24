@@ -1,7 +1,5 @@
-"""Credential profiles: prove a token works, save it, load it by name.
-
-The ambient `LINEAR_API_KEY` / `CLICKUP_API_KEY` are never read: a token must not
-depend on the directory you run from. CI passes `PM_TOKEN` explicitly.
+"""The ambient `LINEAR_API_KEY` / `CLICKUP_API_KEY` are never read: a token must not depend
+on the directory you run from. CI passes `PM_TOKEN` explicitly.
 """
 
 from __future__ import annotations
@@ -24,12 +22,8 @@ _ENV_TOKEN = "PM_TOKEN"
 _SETUP_HINT = "Add one with `pm creds add --name <name> --provider <clickup|linear> --token ...`."
 
 
-def authenticate_token(provider: ProviderType, token: str) -> tuple[str, list[Workspace]]:
-    """Prove the token works before it is written anywhere.
-
-    A mistyped token fails here, next to the paste that caused it, instead of
-    three commands later where the error no longer looks like its cause.
-    """
+def probe_token(provider: ProviderType, token: str) -> tuple[str, list[Workspace]]:
+    """A mistyped token fails here, next to the paste, not three commands later."""
     probe = create_provider(provider, token=token)
     try:
         return probe.viewer_email(), probe.list_workspaces()
@@ -80,17 +74,17 @@ def save_profile(
     workspace_id: str | None,
     *,
     force: bool = False,
-    path: Path | None = None,
 ) -> None:
     if not _PROFILE_NAME_RE.match(name):
         raise PMError(
             f"Profile name {name!r} is not a valid TOML key. Use only letters, digits, '_' and '-'."
         )
-    target = path or credentials_path()
+    target = credentials_path()
     if any(p.name == name for p in list_profiles(target)) and not force:
         raise PMError(
             f"Profile {name!r} already exists in {target}. Re-run with --force to replace it."
         )
+
     write_profiles(
         target,
         [

@@ -1,5 +1,3 @@
-"""Generic stdlib HTTP client for provider adapters."""
-
 from __future__ import annotations
 
 import json
@@ -10,19 +8,23 @@ from typing import Any
 
 from ...exceptions import ProviderError
 
+_DEFAULT_TIMEOUT_SECONDS = 30
+_RETRY_DELAY_SECONDS = 1
+_AUTH_REJECTED_CODES = (401, 403)
+_SERVER_ERROR_MIN_CODE = 500
+_ERROR_DETAIL_MAX_CHARS = 200
+_JSON_CONTENT_TYPE = "application/json; charset=utf-8"
+
+
+class _TransientError(ProviderError):
+    """Raised on 5xx and network errors so `_execute` can retry them; escapes after the last try."""
+
 
 class HttpClient:
-    """Minimal HTTP client built on urllib. Stateless, one per adapter.
-
-    Supports GET, POST, PUT, PATCH JSON. Single retry on transient errors (timeouts, 5xx).
-    Every method takes its url explicitly — there is no default endpoint to
-    silently fall back to.
-    """
-
     def __init__(
         self,
         headers: dict[str, str],
-        timeout: int = 30,
+        timeout: int = _DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = 1,
         auth_hint: str = "",
     ) -> None:
@@ -32,65 +34,56 @@ class HttpClient:
         self.auth_hint = auth_hint
 
     def get_json(self, url: str) -> Any:
-        req = urllib.request.Request(url, headers=self.headers, method="GET")
-        return self._execute(req)
+        return self._execute(urllib.request.Request(url, headers=self.headers, method="GET"))
 
     def put_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={**self.headers, "Content-Type": "application/json; charset=utf-8"},
-            method="PUT",
-        )
-        result = self._execute(req)
-        if not isinstance(result, dict):
-            raise ProviderError(f"Unexpected response shape: {type(result).__name__}")
-        return result
+        return self._send_json("PUT", url, payload)
 
     def post_json(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        return self._send_json("POST", url, payload)
+
+    def _send_json(self, method: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
         req = urllib.request.Request(
             url,
-            data=body,
-            headers={**self.headers, "Content-Type": "application/json; charset=utf-8"},
-            method="POST",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={**self.headers, "Content-Type": _JSON_CONTENT_TYPE},
+            method=method,
         )
         result = self._execute(req)
         if not isinstance(result, dict):
             raise ProviderError(f"Unexpected response shape: {type(result).__name__}")
+
         return result
 
     def _execute(self, req: urllib.request.Request) -> Any:
-        last_err: Exception | None = None
-        for attempt in range(self.max_retries + 1):
+        for _ in range(self.max_retries):
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    raw = resp.read().decode("utf-8")
-                    return json.loads(raw)
-            except urllib.error.HTTPError as e:
-                detail = _safe_read(e)
-                if e.code in (401, 403):
-                    raise ProviderError(
-                        f"Authentication rejected (HTTP {e.code}). "
-                        f"{self.auth_hint or 'Check your API key and scopes.'} Detail: {detail[:200]}"
-                    ) from e
-                if e.code >= 500 and attempt < self.max_retries:
-                    last_err = e
-                    time.sleep(1)
-                    continue
-                raise ProviderError(f"HTTP {e.code}: {detail[:200]}") from e
-            except urllib.error.URLError as e:
-                if attempt < self.max_retries:
-                    last_err = e
-                    time.sleep(1)
-                    continue
-                raise ProviderError(f"Network error: {e}") from e
-        raise ProviderError(f"Request failed after retries: {last_err}")
+                return self._request(req)
+            except _TransientError:
+                time.sleep(_RETRY_DELAY_SECONDS)
+
+        return self._request(req)
+
+    def _request(self, req: urllib.request.Request) -> Any:
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = _safe_read(e)[:_ERROR_DETAIL_MAX_CHARS]
+            if e.code in _AUTH_REJECTED_CODES:
+                raise ProviderError(
+                    f"Authentication rejected (HTTP {e.code}). "
+                    f"{self.auth_hint or 'Check your API key and scopes.'} Detail: {detail}"
+                ) from e
+            if e.code >= _SERVER_ERROR_MIN_CODE:
+                raise _TransientError(f"HTTP {e.code}: {detail}") from e
+            raise ProviderError(f"HTTP {e.code}: {detail}") from e
+        except urllib.error.URLError as e:
+            raise _TransientError(f"Network error: {e}") from e
 
 
 def _safe_read(err: urllib.error.HTTPError) -> str:
     try:
         return err.read().decode("utf-8", errors="replace")
-    except Exception:
+    except OSError:
         return ""

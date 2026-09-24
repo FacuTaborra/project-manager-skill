@@ -7,25 +7,25 @@ from typing import Any
 import pytest
 
 from src.claude_pm.exceptions import NeedsChoice, PMError, ScopeViolation
-from src.claude_pm.models.repo_config import IssueDefaults, ScopeProject, WriteScope
+from src.claude_pm.models.repo_config import IssueDefaults, ProjectRef, Scope
 from src.claude_pm.models.tracker import Doc, Issue, IssueUpdate, Label, Project, State, Team, User
 from src.claude_pm.services.scope_guard import DryRun, ScopeGuard
 
 IN_SCOPE = "list-in"
 OTHER = "list-out"
 
-SCOPE = WriteScope(
+SCOPE = Scope(
     workspace_id="ws-1",
     workspace_name="Hemisphere",
     team_id="space-1",
     team_name="4plus",
-    projects=(ScopeProject(id=IN_SCOPE, name="modulo-energia"),),
+    projects=(ProjectRef(id=IN_SCOPE, name="modulo-energia"),),
 )
 
-TWO_LISTS = WriteScope(
+TWO_LISTS = Scope(
     workspace_id="ws-1",
     team_id="space-1",
-    projects=(ScopeProject(id=IN_SCOPE, name="a"), ScopeProject(id="list-two", name="b")),
+    projects=(ProjectRef(id=IN_SCOPE, name="a"), ProjectRef(id="list-two", name="b")),
 )
 
 
@@ -277,11 +277,11 @@ class TestDefaults:
 
     def test_explicit_labels_come_after_the_defaults(self) -> None:
         guard = _guard(FakeProvider(), defaults=IssueDefaults(labels=("alerts-api",)))
-        assert guard.merge_labels(["bug"]) == ("alerts-api", "bug")
+        assert guard._merge_labels(["bug"]) == ("alerts-api", "bug")
 
     def test_duplicates_are_dropped_case_insensitively(self) -> None:
         guard = _guard(FakeProvider(), defaults=IssueDefaults(labels=("Alerts-API",)))
-        assert guard.merge_labels(["alerts-api", "bug"]) == ("Alerts-API", "bug")
+        assert guard._merge_labels(["alerts-api", "bug"]) == ("Alerts-API", "bug")
 
     def test_default_state_and_priority_are_applied(self) -> None:
         provider = FakeProvider()

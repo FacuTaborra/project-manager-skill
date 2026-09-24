@@ -1,17 +1,6 @@
-"""The single chokepoint for every write.
-
-This module is the only place in the codebase allowed to call the mutating
-methods of `IssueProvider` — `tests/test_scope_invariants.py` enforces that by
-inspection. Two things follow from it:
-
-  * nothing can write to a destination the repo has not declared in `.pm.toml`,
-    because `_authorized_project_id` is the only code that hands out a writable
-    project id;
-  * `--dry-run` is total rather than best-effort, because there is no second
-    path to the API to forget about.
-
-The old arrangement pushed this job onto prose in SKILL.md. Prose is advice to a
-model; this is a precondition.
+"""The only module allowed to call the provider's mutating methods (enforced by
+tests/test_scope_invariants.py). `_authorized_project_id` is the only thing that grants a
+writable id, and `_mutate` is the only place the dry-run branch lives.
 """
 
 from __future__ import annotations
@@ -21,18 +10,16 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 from ..exceptions import NeedsChoice, PMError, ScopeViolation
-from ..models.repo_config import IssueDefaults, WriteScope
+from ..models.repo_config import IssueDefaults, Scope
 from ..models.tracker import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
 from ..repositories.providers.base import DocProvider, IssueProvider
 
 
 @dataclass(frozen=True)
 class DryRun:
-    """What a mutation would have done. Returned instead of calling the API."""
-
     action: str
     destination: str
-    list_id: str | None
+    project_id: str | None
     payload: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -40,7 +27,7 @@ class DryRun:
             "dry_run": True,
             "action": self.action,
             "destination": self.destination,
-            "list_id": self.list_id,
+            "list_id": self.project_id,
             "payload": self.payload,
         }
 
@@ -51,7 +38,7 @@ WriteResult = TypeVar("WriteResult")
 @dataclass
 class ScopeGuard:
     provider: IssueProvider
-    scope: WriteScope
+    scope: Scope
     defaults: IssueDefaults = field(default_factory=IssueDefaults)
     dry_run: bool = False
     allow_structural_changes: bool = False
@@ -59,15 +46,10 @@ class ScopeGuard:
         default_factory=dict, init=False
     )
 
-    # -- the chokepoint ------------------------------------------------------
-
     def _authorized_project_id(
         self, action: str, *, project_id: str | None = None, issue_id: str | None = None
     ) -> str:
-        """Return the project id this mutation may touch, or refuse.
-
-        The only function in the codebase that grants write permission.
-        """
+        """The only function in the codebase that grants write permission."""
         if issue_id is not None:
             owner_id, owner_name = self._owning_project(issue_id)
             if owner_id is None:
@@ -102,10 +84,8 @@ class ScopeGuard:
         return project_id
 
     def _owning_project(self, issue_id: str) -> tuple[str | None, str]:
-        """Which project an issue belongs to. One GET, memoized per process."""
         if issue_id not in self._owning_project_by_issue:
-            issue = self.provider.get_issue(issue_id)
-            project = issue.project
+            project = self.provider.get_issue(issue_id).project
             self._owning_project_by_issue[issue_id] = (
                 (project.id, project.name) if project else (None, "")
             )
@@ -126,27 +106,18 @@ class ScopeGuard:
         payload: dict[str, Any],
         perform_write: Callable[[], WriteResult],
     ) -> WriteResult | DryRun:
-        """Run the write, or describe it instead when this is a dry run.
-
-        Every public write ends here, after its own check has passed. Keeping
-        the branch in one place is what makes `--dry-run` total: a new write
-        cannot forget it without also skipping this helper, which review sees.
-        """
+        """Every write ends here, so `--dry-run` cannot be forgotten by a new one."""
         if self.dry_run:
             return DryRun(
                 action=action,
                 destination=self._destination_label(project_id),
-                list_id=project_id,
+                project_id=project_id,
                 payload=payload,
             )
         return perform_write()
 
     def _require_doc_provider(self, action: str) -> DocProvider:
-        """The provider as a docs-capable one, or a refusal that says why.
-
-        Checked in dry runs too, so a preview never promises a write the
-        tracker cannot perform.
-        """
+        """Checked in dry runs too, so a preview never promises a write the tracker cannot do."""
         if not isinstance(self.provider, DocProvider):
             raise PMError(
                 f"{action} needs a tracker with Docs, and this repo's provider has none. "
@@ -164,8 +135,6 @@ class ScopeGuard:
         team_label = self.scope.team_name or self.scope.team_id
         return f"{workspace_label} → {team_label} → {project_label}"
 
-    # -- writes --------------------------------------------------------------
-
     def create_issue(
         self,
         *,
@@ -181,17 +150,17 @@ class ScopeGuard:
 
         state_name = state or self.defaults.state
         effective_priority = priority if priority is not None else self.defaults.priority
-        label_names = self.merge_labels(labels)
+        label_names = self._merge_labels(labels)
 
         draft = IssueDraft(
             title=title,
             description=description,
             project_id=authorized_project_id,
             team_id=self.scope.team_id,
-            state_id=self.resolve_state_id(state_name),
+            state_id=self._resolve_state_id(state_name),
             priority=effective_priority,
-            assignee_id=self.resolve_assignee_id(assignee_email),
-            label_ids=self.resolve_label_ids(label_names),
+            assignee_id=self._resolve_assignee_id(assignee_email),
+            label_ids=self._resolve_label_ids(label_names),
         )
         return self._mutate(
             "create-issue",
@@ -217,11 +186,7 @@ class ScopeGuard:
         priority: int | None = None,
         assignee_email: str | None = None,
     ) -> Issue | DryRun:
-        """Same shape as `create_issue`: names in, ids resolved here.
-
-        The "nothing to update" check runs first because it needs no API call,
-        and a request that changes nothing should not cost an ownership lookup.
-        """
+        """The empty-update check runs first so a no-op costs no ownership lookup."""
         requested = (title, description, state or None, priority, assignee_email or None)
         if all(value is None for value in requested):
             raise PMError(
@@ -234,9 +199,9 @@ class ScopeGuard:
             issue_id=issue_id,
             title=title,
             description=description,
-            state_id=self.resolve_state_id(state),
+            state_id=self._resolve_state_id(state),
             priority=priority,
-            assignee_id=self.resolve_assignee_id(assignee_email),
+            assignee_id=self._resolve_assignee_id(assignee_email),
         )
         return self._mutate(
             "update-issue",
@@ -253,9 +218,7 @@ class ScopeGuard:
         )
 
     def create_doc(self, *, title: str, content: str | None) -> Doc | DryRun:
-        """Docs live at workspace level, so there is no list to authorize: the provider
-        is built pinned to the `.pm.toml` workspace, and that is what keeps them there.
-        """
+        """Docs live at workspace level; the provider's pinned workspace is what scopes them."""
         docs = self._require_doc_provider("create-doc")
         return self._mutate(
             "create-doc",
@@ -287,8 +250,6 @@ class ScopeGuard:
             ),
         )
 
-    # -- structural writes, off by default -----------------------------------
-
     def create_project(self, name: str) -> Project | DryRun:
         self._require_structural("create-project")
         return self._mutate(
@@ -307,14 +268,8 @@ class ScopeGuard:
             perform_write=lambda: self.provider.create_team(name),
         )
 
-    # -- resolution helpers (all reads) --------------------------------------
-
-    def merge_labels(self, explicit_labels: Sequence[str]) -> tuple[str, ...]:
-        """Repo defaults first, then explicit ones, de-duplicated case-insensitively.
-
-        Done here so no command can forget it: this is what keeps two repos
-        sharing one list distinguishable without anyone passing --label.
-        """
+    def _merge_labels(self, explicit_labels: Sequence[str]) -> tuple[str, ...]:
+        """Merged here so no command can forget the repo labels that tell shared lists apart."""
         merged: list[str] = []
         seen: set[str] = set()
         for name in (*self.defaults.labels, *explicit_labels):
@@ -324,7 +279,7 @@ class ScopeGuard:
                 merged.append(name.strip())
         return tuple(merged)
 
-    def resolve_state_id(self, state_name: str | None) -> str | None:
+    def _resolve_state_id(self, state_name: str | None) -> str | None:
         if not state_name:
             return None
 
@@ -336,7 +291,7 @@ class ScopeGuard:
 
         return match.id
 
-    def resolve_assignee_id(self, email: str | None) -> str | None:
+    def _resolve_assignee_id(self, email: str | None) -> str | None:
         if not email:
             return None
         user = self.provider.resolve_user_by_email(email)
@@ -344,7 +299,7 @@ class ScopeGuard:
             raise PMError(f"No member with email {email!r} in this workspace.")
         return user.id
 
-    def resolve_label_ids(self, names: Sequence[str]) -> tuple[str, ...]:
+    def _resolve_label_ids(self, names: Sequence[str]) -> tuple[str, ...]:
         if not names:
             return ()
         label_id_by_name = {

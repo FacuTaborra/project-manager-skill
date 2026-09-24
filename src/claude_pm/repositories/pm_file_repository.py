@@ -1,18 +1,6 @@
-"""Read and write `<repo>/.pm.toml` — the repo's binding to a board.
+"""`.pm.toml` is committed and secret-free; without one there are no writes.
 
-This file is committed, so the whole team inherits the same binding. It holds no
-secrets: the `profile` key names a credential in `~/.claude/pm/credentials.toml`.
-
-Its presence is the first barrier. No `.pm.toml`, no writes.
-
-Unknown keys are rejected rather than ignored. The old INI format silently
-dropped anything it did not recognise, which is how its `label:` key sat there
-doing nothing for months.
-
-The standard library reads TOML but does not write it, and the schema here is
-small and fixed, so a template beats taking on a dependency in a package that
-has none. `tests/test_init_flow.py` closes the loop by parsing what `render_pm_toml`
-emits.
+The stdlib reads TOML but cannot write it and the schema is small, so rendering is a template.
 """
 
 from __future__ import annotations
@@ -24,15 +12,11 @@ from typing import Any
 from ..config import PM_FILE_NAME
 from ..enums import ProviderType
 from ..exceptions import ConfigError
-from ..models.repo_config import (
-    PM_FILE_VERSION,
-    IssueDefaults,
-    RepoBinding,
-    ScopeProject,
-    WriteScope,
-)
+from ..models.repo_config import IssueDefaults, PmFile, ProjectRef, Scope
 from .git_repo import find_pm_file, find_repo_root
 from .toml import reject_unknown_keys, toml_string
+
+PM_FILE_VERSION = 1
 
 _TOP_LEVEL_KEYS = {"version", "provider", "profile", "scope", "defaults"}
 _SCOPE_KEYS = {
@@ -45,11 +29,13 @@ _SCOPE_KEYS = {
 _DEFAULTS_KEYS = {"labels", "state", "priority"}
 _LIST_KEYS = {"id", "name"}
 
+_MIN_PRIORITY = 0
+_MAX_PRIORITY = 4
+
 _INIT_HINT = f"Run `pm init` in the repo root to write a {PM_FILE_NAME}."
 
 
-def load_pm_file(start: Path | None = None) -> RepoBinding:
-    """Find and parse the nearest `.pm.toml`, or explain how to create one."""
+def load_pm_file(start: Path | None = None) -> PmFile:
     path = find_pm_file(start)
     if path is None:
         where = (start or Path.cwd()).resolve()
@@ -61,10 +47,11 @@ def load_pm_file(start: Path | None = None) -> RepoBinding:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigError(f"Cannot read {path}: {exc}") from exc
+
     return parse_pm_file(text, path=path)
 
 
-def parse_pm_file(text: str, *, path: Path) -> RepoBinding:
+def parse_pm_file(text: str, *, path: Path) -> PmFile:
     try:
         raw: dict[str, Any] = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
@@ -92,19 +79,17 @@ def parse_pm_file(text: str, *, path: Path) -> RepoBinding:
         raise ConfigError(f"{path}: [defaults] must be a table.")
     defaults = _parse_defaults(defaults_raw, path)
 
-    repo_root = find_repo_root(path.parent) or path.parent
-    return RepoBinding(
+    return PmFile(
         path=path,
-        repo_root=repo_root,
+        repo_root=find_repo_root(path.parent) or path.parent,
         provider_type=provider,
         profile_name=profile,
         scope=scope,
         defaults=defaults,
-        version=version,
     )
 
 
-def _parse_scope(raw: dict[str, Any], path: Path) -> WriteScope:
+def _parse_scope(raw: dict[str, Any], path: Path) -> Scope:
     reject_unknown_keys(raw, _SCOPE_KEYS, path, "[scope]")
 
     workspace_id = _require_str(raw.get("workspace_id"), "scope.workspace_id", path, required=True)
@@ -117,7 +102,7 @@ def _parse_scope(raw: dict[str, Any], path: Path) -> WriteScope:
             "Without at least one list there is nowhere to write."
         )
 
-    projects: list[ScopeProject] = []
+    projects: list[ProjectRef] = []
     seen: set[str] = set()
     for index, entry in enumerate(lists_raw):
         if not isinstance(entry, dict):
@@ -128,15 +113,17 @@ def _parse_scope(raw: dict[str, Any], path: Path) -> WriteScope:
             raise ConfigError(f"{path}: [scope].lists has {list_id} twice.")
         seen.add(list_id)
         projects.append(
-            ScopeProject(id=list_id, name=_require_str(entry.get("name"), "", path) or "")
+            ProjectRef(
+                id=list_id, name=_require_str(entry.get("name"), f"scope.lists[{index}].name", path)
+            )
         )
 
-    return WriteScope(
+    return Scope(
         workspace_id=workspace_id,
         team_id=team_id,
         projects=tuple(projects),
-        workspace_name=_require_str(raw.get("workspace_name"), "", path) or "",
-        team_name=_require_str(raw.get("space_name"), "", path) or "",
+        workspace_name=_require_str(raw.get("workspace_name"), "scope.workspace_name", path),
+        team_name=_require_str(raw.get("space_name"), "scope.space_name", path),
     )
 
 
@@ -156,12 +143,14 @@ def _parse_defaults(raw: dict[str, Any], path: Path) -> IssueDefaults:
     priority = (
         None if priority_raw is None else _require_int(priority_raw, "defaults.priority", path)
     )
-    if priority is not None and not 0 <= priority <= 4:
-        raise ConfigError(f"{path}: [defaults].priority must be 0-4 (got {priority}).")
+    if priority is not None and not _MIN_PRIORITY <= priority <= _MAX_PRIORITY:
+        raise ConfigError(
+            f"{path}: [defaults].priority must be {_MIN_PRIORITY}-{_MAX_PRIORITY} (got {priority})."
+        )
 
     return IssueDefaults(
         labels=tuple(labels),
-        state=_require_str(raw.get("state"), "", path) or None,
+        state=_require_str(raw.get("state"), "defaults.state", path) or None,
         priority=priority,
     )
 
@@ -169,6 +158,7 @@ def _parse_defaults(raw: dict[str, Any], path: Path) -> IssueDefaults:
 def _parse_provider(value: Any, path: Path) -> ProviderType:
     if value is None:
         raise ConfigError(f"{path}: missing `provider`. {_INIT_HINT}")
+
     return ProviderType.parse(value, where=f"{path}: ", error=ConfigError)
 
 
@@ -192,7 +182,7 @@ def render_pm_toml(
     *,
     provider_name: str,
     profile_name: str,
-    scope: WriteScope,
+    scope: Scope,
     defaults: IssueDefaults | None = None,
 ) -> str:
     defaults = defaults or IssueDefaults()
