@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.domain.binding import ProviderType
+from src.claude_pm.enums import ProviderType
 from src.claude_pm.exceptions import ConfigError
-from src.claude_pm.infrastructure.config_files.pm_file import load_pm_file, parse_pm_file
+from src.claude_pm.repositories.pm_file_repository import load_pm_file, parse_pm_file
 
 VALID = """
 version  = 1

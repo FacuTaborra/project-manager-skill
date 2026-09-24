@@ -7,22 +7,22 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.application.scope_discovery import (
+from src.claude_pm.enums import ProviderType
+from src.claude_pm.exceptions import ConfigError, PMError
+from src.claude_pm.models.repo_config import (
+    CredentialProfile,
+    IssueDefaults,
+    ScopeProject,
+    WriteScope,
+)
+from src.claude_pm.models.tracker import Project, Team
+from src.claude_pm.repositories.pm_file_repository import parse_pm_file, render_pm_toml
+from src.claude_pm.services.scope_discovery_service import (
     Option,
     choose_profile,
     discover_scope,
     verify_declared_scope,
 )
-from src.claude_pm.domain.binding import (
-    CredentialProfile,
-    IssueDefaults,
-    ProviderType,
-    ScopeProject,
-    WriteScope,
-)
-from src.claude_pm.domain.models import Project, Team
-from src.claude_pm.exceptions import ConfigError, PMError
-from src.claude_pm.infrastructure.config_files.pm_file import parse_pm_file, render_pm_toml
 
 
 class FakeProvider:

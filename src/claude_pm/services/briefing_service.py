@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from ..domain.binding import ScopeProject
-from ..domain.models import Briefing, Issue
-from ..domain.ports import IssueProvider
+from ..models.repo_config import ScopeProject
+from ..models.tracker import Briefing, Issue
+from ..repositories.providers.base import IssueProvider
 
 
 class BriefingService:

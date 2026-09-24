@@ -1,6 +1,6 @@
 """The invariant that makes the chokepoint real.
 
-`application/scope.py` is the only module allowed to call a provider's mutating
+`services/scope_guard.py` is the only module allowed to call a provider's mutating
 methods. Everything else must go through the guard. If that stops being true,
 `--dry-run` silently stops being total and scope checks become skippable, so the
 rule is checked mechanically rather than left to review.
@@ -23,13 +23,15 @@ MUTATORS = {
     "create_label",
 }
 
-# scope.py *is* the chokepoint; ports declares the contract; the adapters implement it.
-EXEMPT_FILES = {"application/scope.py", "domain/ports.py"}
-EXEMPT_DIRS = ("infrastructure/providers/",)
+# scope_guard.py *is* the chokepoint; the providers declare and implement the contract.
+EXEMPT_FILES = {"services/scope_guard.py"}
+EXEMPT_DIRS = ("repositories/providers/",)
 
 
 def _is_guard(node: ast.expr) -> bool:
     """True when the receiver is the guard — the one object allowed to mutate."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        return node.func.id == "get_scope_guard"
     if isinstance(node, ast.Name):
         return node.id == "guard"
     if isinstance(node, ast.Attribute):
@@ -64,7 +66,7 @@ def test_only_the_guard_calls_mutating_provider_methods() -> None:
         path.relative_to(SRC).as_posix(): found for path in _modules() if (found := _offences(path))
     }
     assert not offences, (
-        "These modules mutate outside application/scope.py, which defeats the scope "
+        "These modules mutate outside services/scope_guard.py, which defeats the scope "
         f"check and --dry-run: {offences}"
     )
 
@@ -77,11 +79,14 @@ def test_the_check_would_actually_catch_something(tmp_path: Path) -> None:
 
     innocent = tmp_path / "innocent.py"
     innocent.write_text(
-        "guard.create_issue(title='x')\nself.guard.update_issue(u)\n", encoding="utf-8"
+        "guard.create_issue(title='x')\n"
+        "self.guard.update_issue(u)\n"
+        "get_scope_guard(args).create_doc(title='x')\n",
+        encoding="utf-8",
     )
     assert not _offences(innocent)
 
 
 def test_the_guard_itself_is_covered_by_the_exemption() -> None:
-    """If scope.py were renamed, the exemption must be updated with it."""
-    assert (SRC / "application" / "scope.py").is_file()
+    """If scope_guard.py were renamed, the exemption must be updated with it."""
+    assert (SRC / "services" / "scope_guard.py").is_file()

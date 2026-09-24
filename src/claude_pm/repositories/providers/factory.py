@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ...domain.binding import ProviderType
-from ...domain.ports import IssueProvider
+from ...enums import ProviderType
 from ...exceptions import ConfigError
+from .base import IssueProvider
 from .clickup import ClickUpProvider
 from .linear import LinearProvider
 

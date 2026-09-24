@@ -5,7 +5,7 @@ subcomandos. Lo usa un equipo, sobre varios tableros, desde varios repos.
 
 ## Lo que no se negocia
 
-**Toda mutación pasa por `application/scope.py`.** Ese módulo es el único del repo autorizado a
+**Toda mutación pasa por `services/scope_guard.py`.** Ese módulo es el único del repo autorizado a
 llamar a los métodos que escriben del port (`create_issue`, `update_issue`, `create_project`,
 `create_team`, `create_doc`, `update_doc`, `create_label`).
 [tests/test_scope_invariants.py](tests/test_scope_invariants.py) lo verifica por AST y falla el
@@ -18,24 +18,35 @@ De ahí cuelgan dos garantías que no se sostienen solas:
 - **`--dry-run` es total, no "casi".** No hay un segundo camino a la API que se pueda olvidar.
 
 Si vas a agregar una operación que escribe: el método nuevo va en `ScopeGuard`, llama a
-`_authorized_project_id()` primero, y el comando la invoca por `guard.<lo-que-sea>(...)`. Nunca
-`provider.<lo-que-sea>(...)` desde un comando.
+`_authorized_project_id()` primero, y el comando la invoca por `get_scope_guard(args).<lo-que-sea>(...)`.
+Nunca `provider.<lo-que-sea>(...)` desde un comando.
 
 ## Arquitectura
 
+La misma forma que hemisphere-automations: cada comando pide lo que necesita a `dependencies/` y
+el resto se lee de izquierda a derecha.
+
 ```
-cli.py                    argparse; los flags compartidos vienen de parsers padre
-  └─ commands/            I/O y serialización JSON, nada de lógica
-      └─ application/     servicios: scope (el guard), briefing, search, scope_discovery
-          └─ domain/      ports.py (Protocols) + models.py (dataclasses frozen)
-              ← infrastructure/providers/{linear,clickup}.py
+cli.py                  argparse → commands
+commands/               = routes: leen args, piden dependencias, imprimen JSON
+  issues, docs, board, briefing, init, creds, doctor, install_skill
+  _input.py             prompts y flags de archivo  ·  _output.py  JSON y notas a stderr
+dependencies/           get_repo_config(args) → get_provider(config) → get_scope_guard(args)
+services/               scope_guard (el único que escribe), briefing, search,
+                        scope_discovery (lo que decide init), credential, next_step
+repositories/           I/O: pm_file, credentials, claude_settings, git_repo
+  providers/            base.py (Protocols), factory, http_client, linear, clickup
+models/                 repo_config (lo que sale de .pm.toml + credencial), tracker (Issue, Team…)
+config.py · enums.py · exceptions.py
 ```
+
+Dos cadenas y nada más:
+
+- **Lectura:** `get_repo_config` → `get_provider` → provider → JSON.
+- **Escritura:** `get_scope_guard` → `ScopeGuard` → `_authorized_project_id` → `DryRun` o provider.
 
 Dependencias runtime: **cero**. Solo stdlib, y así queda. Si algo parece necesitar un paquete,
 casi siempre son 40 líneas a mano con mejores mensajes de error.
-
-`commands/_wiring.py` tiene los dos composition roots: `prepare_read()` (sin guard, sin costo de
-verificación) y `prepare_write()` (con guard).
 
 ## Configuración
 
@@ -43,9 +54,9 @@ Dos archivos, y ninguno vive en el clone del skill:
 
 - **`<repo>/.pm.toml`** — se commitea. Provider, perfil de credencial, y el `[scope]` que declara
   workspace/space/lists por ID. Su ausencia es la primera barrera: sin él no hay escritura.
-  Parser en [src/claude_pm/infrastructure/config_files/pm_file.py](src/claude_pm/infrastructure/config_files/pm_file.py).
+  Parser en [src/claude_pm/repositories/pm_file_repository.py](src/claude_pm/repositories/pm_file_repository.py).
 - **`~/.claude/pm/credentials.toml`** — nunca se commitea, `chmod 600`. Perfiles nombrados.
-  Parser en [src/claude_pm/infrastructure/config_files/credentials_store.py](src/claude_pm/infrastructure/config_files/credentials_store.py).
+  Parser en [src/claude_pm/repositories/credentials_repository.py](src/claude_pm/repositories/credentials_repository.py).
 
 Las claves desconocidas se **rechazan**, no se ignoran. El formato INI viejo las tragaba en
 silencio, y así fue como su campo `label:` estuvo meses sin hacer nada.

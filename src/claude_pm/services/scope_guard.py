@@ -20,10 +20,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from ..domain.binding import IssueDefaults, WriteScope
-from ..domain.models import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
-from ..domain.ports import DocProvider, IssueProvider
 from ..exceptions import NeedsChoice, PMError, ScopeViolation
+from ..models.repo_config import IssueDefaults, WriteScope
+from ..models.tracker import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
+from ..repositories.providers.base import DocProvider, IssueProvider
 
 
 @dataclass(frozen=True)

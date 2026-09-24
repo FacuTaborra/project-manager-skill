@@ -6,19 +6,18 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from ..application.onboarding import next_step
-from ..application.profiles import authenticate_token, pick_workspace_id, save_profile
-from ..application.scope_discovery import Option, Pick, choose_profile, discover_scope
-from ..domain.binding import ProviderType
+from ..config import PM_FILE_NAME
+from ..enums import ProviderType
 from ..exceptions import EXIT_OK, PMError
-from ..infrastructure.config_files.credentials_store import list_profiles
-from ..infrastructure.config_files.pm_file import render_pm_toml
-from ..infrastructure.providers._registry import create_provider
-from ..infrastructure.repo_detect import PM_FILE_NAME, find_repo_root
-from ._input import can_prompt
-from ._output import print_json
-from ._profile_prompts import TOKEN_SOURCE_HINT, ask_provider, print_profile_saved
-from ._prompt import Choice, ask, ask_secret, choose
+from ..repositories.credentials_repository import list_profiles
+from ..repositories.git_repo import find_repo_root
+from ..repositories.pm_file_repository import render_pm_toml
+from ..repositories.providers.factory import create_provider
+from ..services.credential_service import authenticate_token, pick_workspace_id, save_profile
+from ..services.next_step import next_step
+from ..services.scope_discovery_service import Option, Pick, choose_profile, discover_scope
+from ._input import Choice, can_prompt, choose, credential_fields
+from ._output import print_json, print_profile_saved
 
 
 def run(args: argparse.Namespace) -> int:
@@ -84,11 +83,10 @@ def _refuse(question: str, options: Sequence[Option], flag: str, multi: bool) ->
 def _add_first_credential(args: argparse.Namespace) -> None:
     """Ask for a token here rather than sending the user off to another command."""
     print("No credentials saved yet.")
-    provider = ProviderType.parse(args.provider) if args.provider else ask_provider()
-    token = ask_secret(f"{provider.value} token ({TOKEN_SOURCE_HINT[provider]})").strip()
-
+    provider, token, name = credential_fields(
+        ProviderType.parse(args.provider) if args.provider else None, None, None, may_prompt=True
+    )
     email, reachable = authenticate_token(provider, token)
-    name = ask("Name for this profile", default=provider.value)
     workspace_id = pick_workspace_id(None, reachable)
 
     save_profile(name, provider, token, workspace_id)

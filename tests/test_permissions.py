@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.claude_pm.exceptions import ConfigError
-from src.claude_pm.infrastructure.permissions import (
+from src.claude_pm.repositories.claude_settings_repository import (
     REQUIRED_PERMISSIONS,
     missing_permissions,
     register_permissions,

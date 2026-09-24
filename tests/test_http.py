@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.claude_pm.exceptions import ProviderError
-from src.claude_pm.infrastructure.providers._http import HttpClient
+from src.claude_pm.repositories.providers.http_client import HttpClient
 
 
 def _make_client() -> HttpClient:

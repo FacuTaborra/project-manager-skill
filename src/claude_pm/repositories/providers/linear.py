@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...domain.models import (
+from ...exceptions import ProviderError
+from ...models.tracker import (
     Issue,
     IssueDraft,
     IssueUpdate,
@@ -15,8 +16,7 @@ from ...domain.models import (
     User,
     Workspace,
 )
-from ...exceptions import ProviderError
-from ._http import HttpClient
+from .http_client import HttpClient
 
 LINEAR_API_URL = "https://api.linear.app/graphql"
 

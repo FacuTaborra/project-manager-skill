@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.claude_pm.infrastructure.repo_detect import (
-    find_pm_file,
-    find_repo_root,
-)
+from src.claude_pm.repositories.git_repo import find_pm_file, find_repo_root
 
 
 def _make_repo(tmp_path: Path, name: str = "my-repo") -> Path:

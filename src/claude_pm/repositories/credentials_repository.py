@@ -15,20 +15,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from ...domain.binding import CredentialProfile, ProviderType
-from ...exceptions import ConfigError
-from ._toml import reject_unknown_keys, toml_string
+from ..config import credentials_path
+from ..enums import ProviderType
+from ..exceptions import ConfigError
+from ..models.repo_config import CredentialProfile
+from .toml import reject_unknown_keys, toml_string
 
 CREDENTIALS_VERSION = 1
 
-DEFAULT_CREDENTIALS_PATH = Path.home() / ".claude" / "pm" / "credentials.toml"
-
 _PROFILE_KEYS = {"provider", "token", "workspace_id"}
-
-
-def credentials_path() -> Path:
-    env = os.environ.get("PM_CREDENTIALS_FILE")
-    return Path(env).expanduser() if env else DEFAULT_CREDENTIALS_PATH
 
 
 def list_profiles(path: Path | None = None) -> list[CredentialProfile]:

@@ -13,7 +13,8 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
-from ...domain.models import (
+from ...exceptions import ProviderError
+from ...models.tracker import (
     Doc,
     Issue,
     IssueDraft,
@@ -25,8 +26,7 @@ from ...domain.models import (
     User,
     Workspace,
 )
-from ...exceptions import ProviderError
-from ._http import HttpClient
+from .http_client import HttpClient
 
 CLICKUP_API_BASE = "https://api.clickup.com/api/v2"
 CLICKUP_API_V3_BASE = "https://api.clickup.com/api/v3"

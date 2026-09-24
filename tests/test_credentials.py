@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.application.profiles import load_profile
-from src.claude_pm.domain.binding import CredentialProfile, ProviderType
+from src.claude_pm.enums import ProviderType
 from src.claude_pm.exceptions import ConfigError
-from src.claude_pm.infrastructure.config_files.credentials_store import list_profiles
+from src.claude_pm.models.repo_config import CredentialProfile
+from src.claude_pm.repositories.credentials_repository import list_profiles
+from src.claude_pm.services.credential_service import load_profile
 
 TWO_PROFILES = """
 version = 1

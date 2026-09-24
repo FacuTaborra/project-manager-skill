@@ -10,15 +10,13 @@ import os
 import re
 from pathlib import Path
 
-from ..domain.binding import CredentialProfile, ProviderType
-from ..domain.models import Workspace
+from ..config import credentials_path
+from ..enums import ProviderType
 from ..exceptions import ConfigError, PMError, ProviderError
-from ..infrastructure.config_files.credentials_store import (
-    credentials_path,
-    list_profiles,
-    write_profiles,
-)
-from ..infrastructure.providers._registry import create_provider
+from ..models.repo_config import CredentialProfile
+from ..models.tracker import Workspace
+from ..repositories.credentials_repository import list_profiles, write_profiles
+from ..repositories.providers.factory import create_provider
 
 _PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _ENV_TOKEN = "PM_TOKEN"

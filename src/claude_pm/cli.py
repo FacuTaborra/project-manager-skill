@@ -14,20 +14,7 @@ import json
 import sys
 
 from . import __version__
-from .commands import (
-    briefing,
-    create_issue,
-    creds,
-    docs,
-    doctor,
-    get_issue,
-    init,
-    install_skill,
-    lookups,
-    search,
-    structure,
-    update_issue,
-)
+from .commands import board, briefing, creds, docs, doctor, init, install_skill, issues
 from .exceptions import EXIT_ERROR, EXIT_OK, NeedsChoice, PMError
 
 
@@ -140,10 +127,10 @@ def _add_setup_commands(
         "--workspace-id", default=None, help="Pin the profile to one workspace."
     )
     p_creds_add.add_argument("--force", action="store_true", help="Replace an existing profile.")
-    p_creds_add.set_defaults(func=creds.run_add)
+    p_creds_add.set_defaults(func=creds.add)
 
     p_creds_list = creds_sub.add_parser("list", help="List profiles (tokens redacted).")
-    p_creds_list.set_defaults(func=creds.run_list)
+    p_creds_list.set_defaults(func=creds.list_all)
 
     p_install = sub.add_parser(
         "install-skill",
@@ -177,30 +164,30 @@ def _add_read_commands(
         action="store_true",
         help="Search the whole workspace instead of this repo's list.",
     )
-    p_search.set_defaults(func=search.run)
+    p_search.set_defaults(func=issues.search)
 
     p_get = sub.add_parser(
         "get-issue", parents=[common], help="Fetch a single issue, including its description."
     )
     p_get.add_argument("--id", required=True, help="Issue identifier (e.g. FAC-12 or a task id).")
-    p_get.set_defaults(func=get_issue.run)
+    p_get.set_defaults(func=issues.get)
 
     p_teams = sub.add_parser("list-teams", parents=[common], help="List spaces/teams.")
-    p_teams.set_defaults(func=lookups.run_list_teams)
+    p_teams.set_defaults(func=board.list_teams)
 
     p_projects = sub.add_parser("list-projects", parents=[common], help="List lists/projects.")
     p_projects.add_argument("--team-id", default=None, help="Space/team id; defaults to the scope.")
-    p_projects.set_defaults(func=lookups.run_list_projects)
+    p_projects.set_defaults(func=board.list_projects)
 
     p_states = sub.add_parser("list-states", parents=[common], help="List workflow states.")
-    p_states.set_defaults(func=lookups.run_list_states)
+    p_states.set_defaults(func=board.list_states)
 
     p_labels = sub.add_parser("list-labels", parents=[common], help="List labels/tags.")
-    p_labels.set_defaults(func=lookups.run_list_labels)
+    p_labels.set_defaults(func=board.list_labels)
 
     p_user = sub.add_parser("resolve-user", parents=[common], help="Resolve a user id by email.")
     p_user.add_argument("email")
-    p_user.set_defaults(func=lookups.run_resolve_user)
+    p_user.set_defaults(func=board.resolve_user)
 
 
 def _add_write_commands(
@@ -236,7 +223,7 @@ def _add_write_commands(
         default=None,
         help="Which list to write to. Required when the repo's scope has several.",
     )
-    p_create.set_defaults(func=create_issue.run)
+    p_create.set_defaults(func=issues.create)
 
     p_update = sub.add_parser("update-issue", parents=[write], help="Update an existing issue.")
     p_update.add_argument("--id", required=True, help="Issue identifier.")
@@ -246,14 +233,14 @@ def _add_write_commands(
     p_update.add_argument("--state", default=None, help="State name (e.g. 'In Progress').")
     p_update.add_argument("--priority", type=int, default=None)
     p_update.add_argument("--assignee", default=None, help="Email of the member to assign.")
-    p_update.set_defaults(func=update_issue.run)
+    p_update.set_defaults(func=issues.update)
 
     p_create_doc = sub.add_parser(
         "create-doc", parents=[write], help="Create a ClickUp Doc (workspace level)."
     )
     p_create_doc.add_argument("--title", required=True)
     p_create_doc.add_argument("--content-file", default=None, help="UTF-8 Markdown file.")
-    p_create_doc.set_defaults(func=docs.run_create_doc)
+    p_create_doc.set_defaults(func=docs.create)
 
     p_update_doc = sub.add_parser(
         "update-doc", parents=[write], help="Update a ClickUp Doc's title or page content."
@@ -262,19 +249,19 @@ def _add_write_commands(
     p_update_doc.add_argument("--title", default=None)
     p_update_doc.add_argument("--content-file", default=None)
     p_update_doc.add_argument("--page-id", default=None, help="Omit to append a new page.")
-    p_update_doc.set_defaults(func=docs.run_update_doc)
+    p_update_doc.set_defaults(func=docs.update)
 
     p_create_project = sub.add_parser(
         "create-project", parents=[structural], help="Create a list/project in this repo's space."
     )
     p_create_project.add_argument("name")
-    p_create_project.set_defaults(func=structure.run_create_project)
+    p_create_project.set_defaults(func=board.create_project)
 
     p_create_team = sub.add_parser(
         "create-team", parents=[structural], help="Create a team (Linear only)."
     )
     p_create_team.add_argument("name")
-    p_create_team.set_defaults(func=structure.run_create_team)
+    p_create_team.set_defaults(func=board.create_team)
 
 
 def build_parser() -> argparse.ArgumentParser:

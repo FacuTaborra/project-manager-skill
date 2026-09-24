@@ -14,32 +14,12 @@ infrastructure. The parser imports it back from here instead.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from ..exceptions import PMError
+from ..enums import ProviderType
 
 PM_FILE_VERSION = 1
-
-
-class ProviderType(StrEnum):
-    LINEAR = "linear"
-    CLICKUP = "clickup"
-
-    @classmethod
-    def parse(cls, raw: Any, *, where: str = "", error: type[PMError] = PMError) -> ProviderType:
-        """Resolve a provider name, or raise `error` listing the supported ones.
-
-        `where` prefixes the message with the file or table the value came from,
-        so a bad `.pm.toml` and a bad `--provider` flag point at different places
-        with the same wording. `error` lets config files raise `ConfigError`.
-        """
-        try:
-            return cls(raw)
-        except (ValueError, TypeError):
-            supported = ", ".join(member.value for member in cls)
-            raise error(f"{where}Unknown provider {raw!r}. Supported: {supported}.") from None
 
 
 @dataclass(frozen=True)
@@ -110,3 +90,23 @@ class CredentialProfile:
             "workspace_id": self.workspace_id,
             "token": f"…{tail}" if tail else "…",
         }
+
+
+@dataclass(frozen=True)
+class RepoConfig:
+    """`.pm.toml` plus the credential it names: everything a command needs to reach the board."""
+
+    pm_file: RepoBinding
+    profile: CredentialProfile
+
+    @property
+    def provider_type(self) -> ProviderType:
+        return self.pm_file.provider_type
+
+    @property
+    def scope(self) -> WriteScope:
+        return self.pm_file.scope
+
+    @property
+    def repo_root(self) -> Path:
+        return self.pm_file.repo_root

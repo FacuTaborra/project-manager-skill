@@ -12,15 +12,13 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-from ..application.onboarding import SKILL_DIR, SKILL_FILE, next_step
+from ..config import SKILL_DIR, SKILL_FILE, settings_path
 from ..exceptions import EXIT_OK, PMError
-from ..infrastructure.permissions import (
+from ..repositories.claude_settings_repository import (
     missing_permissions as list_missing_permissions,
 )
-from ..infrastructure.permissions import (
-    register_permissions,
-    settings_path,
-)
+from ..repositories.claude_settings_repository import register_permissions
+from ..services.next_step import next_step
 from ._output import print_json
 
 

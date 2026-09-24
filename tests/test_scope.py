@@ -6,14 +6,10 @@ from typing import Any
 
 import pytest
 
-from src.claude_pm.application.scope import DryRun, ScopeGuard
-from src.claude_pm.domain.binding import (
-    IssueDefaults,
-    ScopeProject,
-    WriteScope,
-)
-from src.claude_pm.domain.models import Doc, Issue, IssueUpdate, Label, Project, State, Team, User
 from src.claude_pm.exceptions import NeedsChoice, PMError, ScopeViolation
+from src.claude_pm.models.repo_config import IssueDefaults, ScopeProject, WriteScope
+from src.claude_pm.models.tracker import Doc, Issue, IssueUpdate, Label, Project, State, Team, User
+from src.claude_pm.services.scope_guard import DryRun, ScopeGuard
 
 IN_SCOPE = "list-in"
 OTHER = "list-out"

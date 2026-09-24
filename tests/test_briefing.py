@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.application.repo_context import RepoContext
 from src.claude_pm.commands import briefing
-from src.claude_pm.domain.binding import (
+from src.claude_pm.enums import ProviderType
+from src.claude_pm.models.repo_config import (
     CredentialProfile,
-    ProviderType,
     RepoBinding,
+    RepoConfig,
     ScopeProject,
     WriteScope,
 )
-from src.claude_pm.domain.models import Issue, State
+from src.claude_pm.models.tracker import Issue, State
 
 
 class FakeProvider:
@@ -29,7 +29,7 @@ class FakeProvider:
 
 
 def _run(projects: tuple[ScopeProject, ...], monkeypatch, capsys) -> dict:
-    config = RepoContext(
+    config = RepoConfig(
         pm_file=RepoBinding(
             path=Path("/repo/.pm.toml"),
             repo_root=Path("/repo"),
@@ -39,7 +39,8 @@ def _run(projects: tuple[ScopeProject, ...], monkeypatch, capsys) -> dict:
         ),
         profile=CredentialProfile("p", ProviderType.CLICKUP, "pk_x"),
     )
-    monkeypatch.setattr(briefing, "prepare_read", lambda _args: (config, FakeProvider()))
+    monkeypatch.setattr(briefing, "get_repo_config", lambda _args: config)
+    monkeypatch.setattr(briefing, "get_provider", lambda _config: FakeProvider())
     briefing.run(argparse.Namespace(profile=None))
     return json.loads(capsys.readouterr().out)
 

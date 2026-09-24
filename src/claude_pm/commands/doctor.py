@@ -10,17 +10,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ..application.onboarding import SKILL_FILE, next_step
-from ..application.repo_context import RepoContext
-from ..application.scope_discovery import verify_declared_scope
+from ..config import SKILL_FILE, credentials_path
+from ..dependencies.provider import get_provider
+from ..dependencies.repo_config import get_repo_config
 from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError
-from ..infrastructure.config_files.credentials_store import (
-    credentials_path,
-    list_profiles,
-    world_readable_warning,
-)
-from ..infrastructure.repo_detect import find_pm_file
-from ._wiring import build_provider
+from ..models.repo_config import RepoConfig
+from ..repositories.credentials_repository import list_profiles, world_readable_warning
+from ..repositories.git_repo import find_pm_file
+from ..services.next_step import next_step
+from ..services.scope_discovery_service import verify_declared_scope
 
 
 def run(args: argparse.Namespace) -> int:
@@ -38,7 +36,7 @@ def run(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     try:
-        config = RepoContext.load(profile_override=args.profile)
+        config = get_repo_config(args)
     except PMError as exc:
         print(f"  Config:        FAILED — {exc}")
         return EXIT_ERROR
@@ -67,7 +65,7 @@ def _report_credentials() -> bool:
     return True
 
 
-def _report_config(config: RepoContext) -> None:
+def _report_config(config: RepoConfig) -> None:
     print(f"  Repo:          {config.repo_root}")
     print(f"  .pm.toml:      {config.pm_file.path}")
     print(f"  Provider:      {config.provider_type.value}")
@@ -77,10 +75,10 @@ def _report_config(config: RepoContext) -> None:
         print(f"  Auto-labels:   {', '.join(config.pm_file.defaults.labels)}")
 
 
-def _report_connectivity(config: RepoContext) -> int:
+def _report_connectivity(config: RepoConfig) -> int:
     print("  Provider ping: testing...")
     try:
-        provider = build_provider(config)
+        provider = get_provider(config)
         print(f"  Provider ping: ok — authenticated as {provider.viewer_email()}")
     except ProviderError as exc:
         print(f"  Provider ping: FAILED — {exc}")

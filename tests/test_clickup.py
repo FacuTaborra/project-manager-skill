@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from src.claude_pm.domain.models import IssueDraft
 from src.claude_pm.exceptions import ProviderError
-from src.claude_pm.infrastructure.providers.clickup import ClickUpProvider, _is_done
+from src.claude_pm.models.tracker import IssueDraft
+from src.claude_pm.repositories.providers.clickup import ClickUpProvider, _is_done
 
 WORKSPACE = "ws-1"
 

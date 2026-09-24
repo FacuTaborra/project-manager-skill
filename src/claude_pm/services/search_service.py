@@ -4,17 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ..domain.models import Issue
-from ..domain.ports import IssueProvider
+from ..models.tracker import Issue
+from ..repositories.providers.base import IssueProvider
 
 
 class SearchService:
     def __init__(self, provider: IssueProvider) -> None:
         self.provider = provider
 
-    def search_projects(
-        self, query: str, *, project_ids: Sequence[str] | None = None
-    ) -> list[Issue]:
+    def search_issues(self, query: str, *, project_ids: Sequence[str] | None = None) -> list[Issue]:
         """Search every list in scope, not just the first.
 
         Missing a duplicate here is not a small error: it is how a ticket that

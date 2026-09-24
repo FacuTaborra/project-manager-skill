@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-import argparse
+from argparse import Namespace
 
-from ..application.briefing import BriefingService
+from ..dependencies.provider import get_provider
+from ..dependencies.repo_config import get_repo_config
 from ..exceptions import EXIT_OK
+from ..services.briefing_service import BriefingService
 from ._output import briefing_to_dict, issues_by_state_to_dict, print_json
-from ._wiring import prepare_read
 
 
-def run(args: argparse.Namespace) -> int:
-    config, provider = prepare_read(args)
+def run(args: Namespace) -> int:
+    config = get_repo_config(args)
     projects = config.scope.projects
-    service = BriefingService(provider)
+    service = BriefingService(get_provider(config))
 
     if len(projects) > 1:
         result = service.generate_per_project(projects=projects, repo_name=config.repo_root.name)
@@ -27,4 +28,5 @@ def run(args: argparse.Namespace) -> int:
             repo_name=config.repo_root.name,
         )
         print_json(briefing_to_dict(briefing))
+
     return EXIT_OK

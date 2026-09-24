@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-PM_FILE_NAME = ".pm.toml"
+from ..config import PM_FILE_NAME
 
 
 def _iter_up(start: Path) -> Iterator[Path]:

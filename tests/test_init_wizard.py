@@ -8,9 +8,10 @@ from pathlib import Path
 import pytest
 
 from src.claude_pm.commands import _input, init
-from src.claude_pm.domain.binding import CredentialProfile, ProviderType
-from src.claude_pm.domain.models import Project, Team
+from src.claude_pm.enums import ProviderType
 from src.claude_pm.exceptions import EXIT_ERROR, PMError
+from src.claude_pm.models.repo_config import CredentialProfile
+from src.claude_pm.models.tracker import Project, Team
 
 PROFILE = CredentialProfile("urbs", ProviderType.CLICKUP, "pk_secret")
 
@@ -95,9 +96,11 @@ class TestFirstCredential:
 
         monkeypatch.setattr(_input, "is_interactive", lambda: True)
         monkeypatch.setattr(init, "list_profiles", lambda: profiles)
-        monkeypatch.setattr(init, "ask_secret", lambda _q: "pk_typed_by_hand")
-        monkeypatch.setattr(init, "ask", lambda _q, default=None: "urbs")
-        monkeypatch.setattr(init, "ask_provider", lambda: ProviderType.CLICKUP)
+        monkeypatch.setattr(
+            init,
+            "credential_fields",
+            lambda *_a, **_kw: (ProviderType.CLICKUP, "pk_typed_by_hand", "urbs"),
+        )
         monkeypatch.setattr(
             init, "authenticate_token", lambda p, t: ("dev@example.com", [Team("w1", "One", "w1")])
         )

@@ -11,9 +11,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import NamedTuple, Protocol, TypeVar
 
-from ..domain.binding import CredentialProfile, ProviderType, ScopeProject, WriteScope
-from ..domain.ports import IssueProvider
+from ..enums import ProviderType
 from ..exceptions import ConfigError, PMError
+from ..models.repo_config import CredentialProfile, ScopeProject, WriteScope
+from ..repositories.providers.base import IssueProvider
 
 
 class Option(NamedTuple):

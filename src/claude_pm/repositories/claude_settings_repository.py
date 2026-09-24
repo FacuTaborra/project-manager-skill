@@ -12,16 +12,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..config import settings_path
 from ..exceptions import ConfigError
 
 REQUIRED_PERMISSIONS = [
     "Bash(pm:*)",
     "Write(~/.claude/tmp_*.md)",
 ]
-
-
-def settings_path() -> Path:
-    return Path.home() / ".claude" / "settings.json"
 
 
 def missing_permissions(path: Path | None = None) -> list[str]:

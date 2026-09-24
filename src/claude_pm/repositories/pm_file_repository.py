@@ -21,17 +21,18 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from ...domain.binding import (
+from ..config import PM_FILE_NAME
+from ..enums import ProviderType
+from ..exceptions import ConfigError
+from ..models.repo_config import (
     PM_FILE_VERSION,
     IssueDefaults,
-    ProviderType,
     RepoBinding,
     ScopeProject,
     WriteScope,
 )
-from ...exceptions import ConfigError
-from ..repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
-from ._toml import reject_unknown_keys, toml_string
+from .git_repo import find_pm_file, find_repo_root
+from .toml import reject_unknown_keys, toml_string
 
 _TOP_LEVEL_KEYS = {"version", "provider", "profile", "scope", "defaults"}
 _SCOPE_KEYS = {

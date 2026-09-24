@@ -11,12 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config import PM_FILE_NAME, SKILL_FILE, credentials_path
 from ..exceptions import PMError
-from ..infrastructure.config_files.credentials_store import credentials_path, list_profiles
-from ..infrastructure.repo_detect import PM_FILE_NAME, find_pm_file, find_repo_root
-
-SKILL_DIR = Path.home() / ".claude" / "skills" / "pm"
-SKILL_FILE = SKILL_DIR / "SKILL.md"
+from ..repositories.claude_settings_repository import missing_permissions
+from ..repositories.credentials_repository import list_profiles
+from ..repositories.git_repo import find_pm_file, find_repo_root
 
 
 @dataclass(frozen=True)
@@ -48,8 +47,6 @@ def next_step(start: Path | None = None) -> Step:
 
 
 def _skill_step() -> Step | None:
-    from ..infrastructure.permissions import missing_permissions
-
     if not SKILL_FILE.is_file():
         return Step(
             why="install the skill so Claude Code can see it",
