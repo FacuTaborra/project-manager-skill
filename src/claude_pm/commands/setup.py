@@ -11,7 +11,7 @@ from ._wiring import build_cache_refresher, build_provider
 
 
 def run(args: argparse.Namespace) -> int:
-    config = RepoContext.load(args.repo_name, profile_override=args.profile)
+    config = RepoContext.load(profile_override=args.profile)
     provider = build_provider(config)
 
     result = build_cache_refresher(config, provider).refresh(force=args.force)

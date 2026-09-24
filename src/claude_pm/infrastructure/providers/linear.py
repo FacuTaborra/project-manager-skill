@@ -29,15 +29,6 @@ query($q: String!) {
 }
 """
 
-_ISSUE_SEARCH_LEGACY_QUERY = """
-query($q: String!) {
-  issueSearch(query: $q, first: 20) {
-    nodes { identifier title state { id name }
-            project { id name } }
-  }
-}
-"""
-
 
 class LinearProvider:
     """Implements IssueProvider against Linear's GraphQL API.
@@ -186,12 +177,8 @@ class LinearProvider:
         return [_to_issue(n) for n in nodes]
 
     def search_issues(self, query: str, *, project_id: str | None = None) -> list[Issue]:
-        try:
-            data = self._query(_SEARCH_ISSUES_QUERY, {"q": query})
-            nodes = (data.get("searchIssues") or {}).get("nodes") or []
-        except ProviderError:
-            data = self._query(_ISSUE_SEARCH_LEGACY_QUERY, {"q": query})
-            nodes = (data.get("issueSearch") or {}).get("nodes") or []
+        data = self._query(_SEARCH_ISSUES_QUERY, {"q": query})
+        nodes = (data.get("searchIssues") or {}).get("nodes") or []
 
         issues = [_to_issue(n, with_project=True) for n in nodes]
         if project_id:

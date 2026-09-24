@@ -1,56 +1,12 @@
-"""Resolve a board into a `.pm.toml` scope.
-
-Two ways in: pick interactively (via NeedsChoice round-trips, since the caller is
-usually Claude and cannot answer a prompt), or convert a section of the legacy
-`projects.pm`, which named spaces and projects instead of identifying them.
-
-The legacy path is the one that finally puts `label:` to work: it becomes
-`[defaults].labels`, which is what lets two repos share one list and still be
-told apart.
-"""
+"""Resolve a board into a `.pm.toml` scope."""
 
 from __future__ import annotations
 
-import configparser
 from collections.abc import Callable
-from dataclasses import dataclass
-from pathlib import Path
 
-from ..domain.binding import IssueDefaults, ScopeProject, WriteScope
+from ..domain.binding import ScopeProject, WriteScope
 from ..domain.ports import IssueProvider
 from ..exceptions import NeedsChoice, PMError
-
-
-@dataclass(frozen=True)
-class LegacySection:
-    """One `[repo]` section of the old INI file."""
-
-    provider_name: str | None
-    team_name: str | None
-    project_names: tuple[str, ...]
-    label_name: str | None
-
-
-def read_legacy_section(path: Path, repo_name: str) -> LegacySection | None:
-    if not path.is_file():
-        return None
-    parser = configparser.ConfigParser(interpolation=None)
-    try:
-        parser.read(path, encoding="utf-8")
-    except (OSError, configparser.Error) as exc:
-        raise PMError(f"Cannot read legacy {path}: {exc}") from exc
-
-    name = next((s for s in parser.sections() if s.lower() == repo_name.lower()), None)
-    if name is None:
-        return None
-    section = parser[name]
-    project_names = tuple(p.strip() for p in section.get("project", "").split(",") if p.strip())
-    return LegacySection(
-        provider_name=section.get("provider") or None,
-        team_name=section.get("space") or None,
-        project_names=project_names,
-        label_name=section.get("label") or None,
-    )
 
 
 def resolve_workspace(provider: IssueProvider, declared: str | None) -> tuple[str, str]:
@@ -78,10 +34,7 @@ def resolve_workspace(provider: IssueProvider, declared: str | None) -> tuple[st
     )
 
 
-def resolve_team(
-    provider: IssueProvider, *, team_id: str | None, team_name: str | None
-) -> tuple[str, str]:
-    """Resolve a team by id, else by name (the legacy path), else ask."""
+def resolve_team(provider: IssueProvider, *, team_id: str | None) -> tuple[str, str]:
     teams = provider.list_teams()
     if not teams:
         raise PMError("This workspace has no spaces/teams.")
@@ -91,12 +44,6 @@ def resolve_team(
         if match is None:
             raise PMError(f"Space {team_id} not found. {_options(teams)}")
         return match.id, match.name
-
-    if team_name:
-        matches = [t for t in teams if t.name.lower() == team_name.lower()]
-        if not matches:
-            raise PMError(f"Space {team_name!r} not found. {_options(teams)}")
-        return matches[0].id, matches[0].name
 
     if len(teams) == 1:
         return teams[0].id, teams[0].name
@@ -112,9 +59,7 @@ def resolve_projects(
     team_id: str,
     *,
     project_ids: list[str] | None = None,
-    project_names: list[str] | None = None,
 ) -> tuple[ScopeProject, ...]:
-    """Resolve the writable destinations by id, else by name, else ask."""
     projects = provider.list_projects(team_id)
     if not projects:
         raise PMError(f"Space {team_id} has no lists to write to.")
@@ -126,16 +71,6 @@ def resolve_projects(
             project = by_id.get(wanted)
             if project is None:
                 raise PMError(f"List {wanted} not found in this space. {_options(projects)}")
-            refs.append(ScopeProject(id=project.id, name=project.name))
-        return tuple(refs)
-
-    if project_names:
-        by_name = {p.name.lower(): p for p in projects}
-        refs = []
-        for wanted in project_names:
-            project = by_name.get(wanted.lower())
-            if project is None:
-                raise PMError(f"List {wanted!r} not found in this space. {_options(projects)}")
             refs.append(ScopeProject(id=project.id, name=project.name))
         return tuple(refs)
 
@@ -153,9 +88,7 @@ def discover_scope(
     *,
     workspace_id: str | None,
     team_id: str | None = None,
-    team_name: str | None = None,
     project_ids: list[str] | None = None,
-    project_names: list[str] | None = None,
 ) -> WriteScope:
     """Resolve a full scope, pinning the provider as soon as the workspace is known.
 
@@ -166,12 +99,8 @@ def discover_scope(
     resolved_workspace, workspace_name = resolve_workspace(make_provider(None), workspace_id)
 
     provider = make_provider(resolved_workspace)
-    resolved_team_id, resolved_team_name = resolve_team(
-        provider, team_id=team_id, team_name=team_name
-    )
-    projects = resolve_projects(
-        provider, resolved_team_id, project_ids=project_ids, project_names=project_names
-    )
+    resolved_team_id, resolved_team_name = resolve_team(provider, team_id=team_id)
+    projects = resolve_projects(provider, resolved_team_id, project_ids=project_ids)
     return WriteScope(
         workspace_id=resolved_workspace,
         workspace_name=workspace_name,
@@ -179,13 +108,6 @@ def discover_scope(
         team_name=resolved_team_name,
         projects=projects,
     )
-
-
-def defaults_from_legacy(section: LegacySection | None) -> IssueDefaults:
-    """`label:` was parsed and dropped for months. Here it finally lands somewhere."""
-    if section is None or not section.label_name:
-        return IssueDefaults()
-    return IssueDefaults(labels=(section.label_name,))
 
 
 def _options(items: list) -> str:  # type: ignore[type-arg]

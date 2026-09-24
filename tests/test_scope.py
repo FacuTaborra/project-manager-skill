@@ -378,7 +378,6 @@ class TestBuildGuard:
         return RepoContext(
             pm_file=pm_file,
             profile=CredentialProfile("4plus", ProviderType.CLICKUP, "pk_x", workspace_id),
-            repo_name="alerts-api",
             cache_path=Path("/tmp/cache.json"),
             fingerprint="fp",
         )

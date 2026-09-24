@@ -155,4 +155,4 @@ El briefing es solo lectura. El plan de issues se muestra primero y se crea desp
 No importa: el binding es por ID, no por nombre. `pm init` te lista lo que hay y elegís.
 
 **¿Los tickets que crea Claude son buenos?**
-Depende del contexto que le des. Si le decís "agreguemos webhooks salientes", va a generar issues razonables. Si además tenés un vault de Obsidian con notas del proyecto, Claude las lee y genera issues con contexto real del codebase. Siempre podés editar la propuesta antes de confirmar.
+Depende del contexto que le des. Si le decís "agreguemos webhooks salientes", va a generar issues razonables. Siempre podés editar la propuesta antes de confirmar.

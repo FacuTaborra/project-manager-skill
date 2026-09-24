@@ -2,7 +2,7 @@
 
 Setup is a short chain and every link has one obvious next command. Rather than
 leaving a reader — usually Claude — to infer the order from the README, the tool
-reports the next step itself. `doctor`, `creds add`, `creds import`, `init` and
+reports the next step itself. `doctor`, `creds add`, `init` and
 `install-skill` all print it, so wherever you land you are told where to go.
 """
 
@@ -77,8 +77,7 @@ def _credentials_step() -> Step | None:
             command="pm creds add --name <name> --provider clickup --token pk_xxx",
             hint=(
                 "ClickUp → Settings → Apps → API Token.\n"
-                "For Linear: https://linear.app/settings/api (Read + Write).\n"
-                "Coming from the previous version: pm creds import"
+                "For Linear: https://linear.app/settings/api (Read + Write)."
             ),
         )
     return None

@@ -11,7 +11,6 @@ from src.claude_pm.infrastructure.cache import (
     CACHE_VERSION,
     Cache,
     JsonFileCacheRepository,
-    find_legacy_caches,
 )
 from tests.fakes import InMemoryCacheRepository
 
@@ -171,17 +170,3 @@ class TestInMemoryRepository:
         loaded = repo.load()
         assert loaded.team_id == "s"
         assert loaded.labels == tuple(LABELS)
-
-
-class TestLegacyDiscovery:
-    def test_finds_orphaned_v1_files(self, tmp_path: Path) -> None:
-        old = tmp_path / "proyectos" / "alerts-api"
-        old.mkdir(parents=True)
-        (old / ".clickup-cache.json").write_text("{}", encoding="utf-8")
-        assert find_legacy_caches(tmp_path) == [old / ".clickup-cache.json"]
-
-    def test_no_vault_means_nothing_to_report(self) -> None:
-        assert find_legacy_caches(None) == []
-
-    def test_vault_without_projects_dir(self, tmp_path: Path) -> None:
-        assert find_legacy_caches(tmp_path) == []

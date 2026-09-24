@@ -8,9 +8,7 @@ from pathlib import Path
 import pytest
 
 from src.claude_pm.application.scope_discovery import (
-    defaults_from_legacy,
     discover_scope,
-    read_legacy_section,
     resolve_projects,
     resolve_team,
     resolve_workspace,
@@ -19,21 +17,6 @@ from src.claude_pm.domain.binding import IssueDefaults, ScopeProject, WriteScope
 from src.claude_pm.domain.models import Project, Team
 from src.claude_pm.exceptions import NeedsChoice, PMError
 from src.claude_pm.infrastructure.config_files.pm_file import parse_pm_file, render_pm_toml
-
-LEGACY = """\
-# Mapeo de repos a proyectos en el tracker.
-
-[alerts-api]
-provider: clickup
-space: 4plus
-project: modulo-energia
-label: alerts-api
-
-[cahpsa-etl]
-provider: clickup
-space: Cahpsa
-project: Melvin, Nutrex, Witwot
-"""
 
 
 class FakeProvider:
@@ -57,44 +40,6 @@ class FakeProvider:
         return self._projects
 
 
-class TestLegacyFile:
-    def test_reads_a_section_case_insensitively(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        section = read_legacy_section(path, "Alerts-API")
-        assert section is not None
-        assert section.team_name == "4plus"
-        assert section.project_names == ("modulo-energia",)
-        assert section.label_name == "alerts-api"
-
-    def test_comma_separated_projects_become_a_tuple(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        section = read_legacy_section(path, "cahpsa-etl")
-        assert section is not None
-        assert section.project_names == ("Melvin", "Nutrex", "Witwot")
-
-    def test_unknown_repo_is_none(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        assert read_legacy_section(path, "not-here") is None
-
-    def test_absent_file_is_none(self, tmp_path: Path) -> None:
-        assert read_legacy_section(tmp_path / "nope.pm", "x") is None
-
-    def test_the_dead_label_becomes_a_default(self, tmp_path: Path) -> None:
-        """`label:` was parsed and dropped. This is where it finally does something."""
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        section = read_legacy_section(path, "alerts-api")
-        assert defaults_from_legacy(section) == IssueDefaults(labels=("alerts-api",))
-
-    def test_no_label_means_no_defaults(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        assert defaults_from_legacy(read_legacy_section(path, "cahpsa-etl")) == IssueDefaults()
-
-
 class TestResolution:
     def test_a_single_workspace_is_adopted(self) -> None:
         assert resolve_workspace(FakeProvider(), None) == ("ws-1", "Hemisphere")
@@ -111,30 +56,13 @@ class TestResolution:
         with pytest.raises(PMError, match="cannot reach workspace"):
             resolve_workspace(FakeProvider(), "ws-other")
 
-    def test_space_by_legacy_name(self) -> None:
-        assert resolve_team(FakeProvider(), team_id=None, team_name="4plus") == (
-            "space-1",
-            "4plus",
-        )
-
-    def test_space_by_name_is_case_insensitive(self) -> None:
-        assert resolve_team(FakeProvider(), team_id=None, team_name="4PLUS")[0] == "space-1"
-
-    def test_unknown_space_name_lists_the_options(self) -> None:
-        with pytest.raises(PMError, match="4plus"):
-            resolve_team(FakeProvider(), team_id=None, team_name="ghost")
-
     def test_several_spaces_and_no_hint_asks(self) -> None:
         provider = FakeProvider(
             spaces=[Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
         )
         with pytest.raises(NeedsChoice) as excinfo:
-            resolve_team(provider, team_id=None, team_name=None)
+            resolve_team(provider, team_id=None)
         assert excinfo.value.payload["action"] == "choose-space"
-
-    def test_lists_by_legacy_names(self) -> None:
-        refs = resolve_projects(FakeProvider(), "space-1", project_names=["modulo-energia"])
-        assert refs == (ScopeProject(id="list-1", name="modulo-energia"),)
 
     def test_lists_by_id(self) -> None:
         refs = resolve_projects(FakeProvider(), "space-1", project_ids=["list-1"])
@@ -151,12 +79,12 @@ class TestResolution:
 
 
 class TestDiscoverScope:
-    def test_end_to_end_from_legacy_names(self) -> None:
+    def test_end_to_end(self) -> None:
         scope = discover_scope(
             lambda _workspace_id: FakeProvider(),
             workspace_id=None,
-            team_name="4plus",
-            project_names=["modulo-energia"],
+            team_id="space-1",
+            project_ids=["list-1"],
         )
         assert scope.workspace_id == "ws-1"
         assert scope.team_id == "space-1"
@@ -171,9 +99,7 @@ class TestDiscoverScope:
             pins.append(workspace_id)
             return FakeProvider()
 
-        discover_scope(
-            make_provider, workspace_id=None, team_name="4plus", project_names=["modulo-energia"]
-        )
+        discover_scope(make_provider, workspace_id=None, team_id="space-1", project_ids=["list-1"])
         assert pins == [None, "ws-1"]
 
 

@@ -9,7 +9,7 @@ argument-hint: "[status question | task description to plan]"
 
 # PM Skill — Product Manager backed by Linear / ClickUp
 
-You are the Product Manager for this project. You have access to a tracker (Linear or ClickUp) via the `pm` CLI, and optionally an **Obsidian vault** for project context. Your job is to answer what's open, what's blocked, and what should be done next — and when asked, propose and create issues.
+You are the Product Manager for this project. You have access to a tracker (Linear or ClickUp) via the `pm` CLI. Your job is to answer what's open, what's blocked, and what should be done next — and when asked, propose and create issues.
 
 > **Language rule:** This file is in English for portability, but **all user-facing output must be in the language the user is communicating in.** Detect from the conversation, do not ask.
 
@@ -49,7 +49,7 @@ If the user asks you to install or set up the tool, the same applies: run `pm do
 |---|---|
 | `doctor` | Check config, scope and connectivity. Run if anything looks broken. |
 | `setup` | Verify the declared scope and refresh the cache. Auto-runs on first use. |
-| `briefing` | Open issues grouped by state, plus vault context. Outputs JSON. |
+| `briefing` | Open issues grouped by state. Outputs JSON. |
 | `get-issue --id <ID>` | Fetch one issue — title, description, state, priority, url. |
 | `search "<query>"` | Search issues for duplicate detection before planning. |
 | `create-issue --title T (--description "..." \| --description-file F) [--state S] [--priority N] [--assignee EMAIL] [--label L] [--project-id ID] [--dry-run]` | Create one issue. |
@@ -113,12 +113,9 @@ Parse the JSON. With a single list it has `issues_by_state` at the top level; wi
 
 ### 📋 Próximos — Backlog (top 5)
 - ID: title
-
-### 📌 Contexto del vault
-[1–2 lines from vault_excerpt if present]
 ```
 
-If `vault_available` is `false`, omit the vault section silently. The briefing should be readable in 30 seconds — surface what matters, don't dump everything.
+The briefing should be readable in 30 seconds — surface what matters, don't dump everything.
 
 ---
 
@@ -194,7 +191,6 @@ Note: the repo may define default labels in `.pm.toml`; they are applied automat
 
 - **Anything about configuration** (exit 1): run `pm doctor`, surface its `▸ Next step` verbatim. Don't improvise.
 - **Scope refusal** (exit 4): surface it verbatim and stop. This is a safety boundary, not an obstacle.
-- **Vault not found** (`vault_available: false`): skip the vault section silently.
 - **Needs a choice** (exit 2): show options, wait, re-run with the flag.
 - **API timeout / 5xx**: the CLI retries once. If it still fails, say the API is unreachable.
 - **Label / assignee not found**: surface the error verbatim — it lists what exists.

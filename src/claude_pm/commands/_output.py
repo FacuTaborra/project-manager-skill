@@ -34,8 +34,6 @@ def briefing_to_dict(briefing: Briefing) -> dict[str, Any]:
     return {
         "repo": briefing.repo_name,
         "project": briefing.project_name,
-        "vault_available": briefing.vault_available,
-        "vault_excerpt": briefing.vault_excerpt,
         "issues_by_state": issues_by_state_to_dict(briefing.issues_by_state),
         "total_open": briefing.total_open,
     }

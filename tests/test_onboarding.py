@@ -132,11 +132,6 @@ class TestEdgeCases:
         stage.add_permissions()
         assert "Settings → Apps" in next_step(stage.repo).hint
 
-    def test_the_token_step_mentions_the_migration_shortcut(self, stage) -> None:
-        stage.install_skill()
-        stage.add_permissions()
-        assert "pm creds import" in next_step(stage.repo).hint
-
 
 class TestRender:
     def test_shows_the_command_on_its_own_line(self) -> None:

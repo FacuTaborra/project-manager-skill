@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from ...domain.binding import CredentialProfile, ProfileEntry, ProviderType
+from ...domain.binding import CredentialProfile, ProviderType
 from ...exceptions import ConfigError
 from ._toml import reject_unknown_keys, toml_string
 
@@ -24,14 +24,6 @@ CREDENTIALS_VERSION = 1
 DEFAULT_CREDENTIALS_PATH = Path.home() / ".claude" / "pm" / "credentials.toml"
 
 _PROFILE_KEYS = {"provider", "token", "workspace_id"}
-
-LEGACY_SECRETS = {
-    ProviderType.LINEAR: (Path.home() / ".claude" / "secrets" / "linear-pak.env", "LINEAR_API_KEY"),
-    ProviderType.CLICKUP: (
-        Path.home() / ".claude" / "secrets" / "clickup-pak.env",
-        "CLICKUP_API_KEY",
-    ),
-}
 
 
 def credentials_path() -> Path:
@@ -91,7 +83,7 @@ def _parse_profile(name: str, raw: Any, path: Path) -> CredentialProfile:
 
 def write_profiles(
     path: Path,
-    entries: Sequence[ProfileEntry],
+    entries: Sequence[CredentialProfile],
     *,
     replace: bool = False,
 ) -> None:
@@ -100,7 +92,7 @@ def write_profiles(
         os.chmod(path.parent, stat.S_IRWXU)
 
     if replace and path.is_file():
-        names = {name for name, *_ in entries}
+        names = {entry.name for entry in entries}
         path.write_text(
             _remove_profile_tables(path.read_text(encoding="utf-8"), names), encoding="utf-8"
         )
@@ -111,14 +103,14 @@ def write_profiles(
         else f"version = {CREDENTIALS_VERSION}\n"
     )
     blocks = []
-    for name, provider_type, token, workspace_id in entries:
+    for entry in entries:
         block = (
-            f"\n[profiles.{name}]\n"
-            f"provider     = {toml_string(provider_type.value)}\n"
-            f"token        = {toml_string(token)}\n"
+            f"\n[profiles.{entry.name}]\n"
+            f"provider     = {toml_string(entry.provider_type.value)}\n"
+            f"token        = {toml_string(entry.token)}\n"
         )
-        if workspace_id:
-            block += f"workspace_id = {toml_string(workspace_id)}\n"
+        if entry.workspace_id:
+            block += f"workspace_id = {toml_string(entry.workspace_id)}\n"
         blocks.append(block)
 
     with path.open("a", encoding="utf-8") as handle:
@@ -139,32 +131,6 @@ def _remove_profile_tables(text: str, names: set[str]) -> str:
         if not dropping:
             kept.append(line)
     return "\n".join(kept).rstrip() + "\n"
-
-
-def find_legacy_tokens() -> list[ProfileEntry]:
-    """Discover tokens left by the old `~/.claude/secrets/*.env` layout, for `pm creds import`."""
-    return [
-        ProfileEntry(f"{provider.value}-default", provider, token, None)
-        for provider, (secret_file, key) in LEGACY_SECRETS.items()
-        if (token := _read_env_key(secret_file, key))
-    ]
-
-
-def _read_env_key(path: Path, key: str) -> str | None:
-    if not path.is_file():
-        return None
-    prefix = f"{key}="
-    try:
-        for raw in path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip().removeprefix("export ")
-            if not line or line.startswith("#") or not line.startswith(prefix):
-                continue
-            value = line.split("=", 1)[1].strip().strip('"').strip("'")
-            if value and value != "REPLACE_ME":
-                return value
-    except OSError:
-        return None
-    return None
 
 
 def world_readable_warning(path: Path | None = None) -> str | None:

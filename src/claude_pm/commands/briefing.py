@@ -1,4 +1,4 @@
-"""`briefing` — open issues grouped by state, plus optional vault context."""
+"""`briefing` — open issues grouped by state."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import argparse
 from ..application.briefing import BriefingService
 from ..exceptions import EXIT_OK, CacheInvalid
 from ._output import briefing_to_dict, issues_by_state_to_dict, print_json
-from ._wiring import build_cache_refresher, build_context, prepare_read
+from ._wiring import build_cache_refresher, prepare_read
 
 
 def run(args: argparse.Namespace) -> int:
@@ -18,11 +18,12 @@ def run(args: argparse.Namespace) -> int:
     if not projects:
         raise CacheInvalid("Cache is missing list info. Run `pm setup --force`.")
 
-    context = build_context(config)
-    service = BriefingService(provider, context)
+    service = BriefingService(provider)
 
     if len(projects) > 1:
-        result = service.generate_per_project(projects=list(projects), repo_name=config.repo_name)
+        result = service.generate_per_project(
+            projects=list(projects), repo_name=config.repo_root.name
+        )
         for section in result["projects"]:
             section["issues_by_state"] = issues_by_state_to_dict(section["issues_by_state"])
         print_json(result)
@@ -30,7 +31,7 @@ def run(args: argparse.Namespace) -> int:
         briefing = service.generate(
             project_id=projects[0]["id"],
             project_name=projects[0]["name"],
-            repo_name=config.repo_name,
+            repo_name=config.repo_root.name,
         )
         print_json(briefing_to_dict(briefing))
     return EXIT_OK

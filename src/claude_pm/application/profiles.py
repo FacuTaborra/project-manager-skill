@@ -17,7 +17,7 @@ import os
 import re
 from pathlib import Path
 
-from ..domain.binding import CredentialProfile, ProfileEntry, ProviderType
+from ..domain.binding import CredentialProfile, ProviderType
 from ..domain.models import Workspace
 from ..exceptions import ConfigError, NeedsChoice, PMError, ProviderError
 from ..infrastructure.config_files.credentials_store import (
@@ -31,10 +31,7 @@ _PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _ENV_TOKEN = "PM_TOKEN"
 _ENV_PROFILE = "PM_PROFILE"
 
-_SETUP_HINT = (
-    "Add one with `pm creds import` (migrates ~/.claude/secrets/*.env) "
-    "or by writing the file yourself."
-)
+_SETUP_HINT = "Add one with `pm creds add --name <name> --provider <clickup|linear> --token ...`."
 
 
 def authenticate_token(provider: ProviderType, token: str) -> tuple[str, list[Workspace]]:
@@ -63,7 +60,6 @@ def pick_workspace_id(declared: str | None, reachable: list[Workspace]) -> str |
 def infer_provider(
     provider_arg: str | None,
     profile_name: str | None,
-    legacy_provider: str | None,
 ) -> ProviderType:
     """Work out the provider without making the user state the obvious.
 
@@ -71,9 +67,8 @@ def infer_provider(
     only profiles of one kind — settles it. Only a genuine ambiguity is worth
     asking about, and then it is exit 2 like every other choice, not a dead end.
     """
-    raw = provider_arg or legacy_provider
-    if raw is not None:
-        return ProviderType.parse(raw)
+    if provider_arg is not None:
+        return ProviderType.parse(provider_arg)
 
     profiles = list_profiles()
     if profile_name:
@@ -181,4 +176,12 @@ def save_profile(
         raise PMError(
             f"Profile {name!r} already exists in {target}. Re-run with --force to replace it."
         )
-    write_profiles(target, [ProfileEntry(name, provider, token, workspace_id)], replace=force)
+    write_profiles(
+        target,
+        [
+            CredentialProfile(
+                name=name, provider_type=provider, token=token, workspace_id=workspace_id
+            )
+        ],
+        replace=force,
+    )

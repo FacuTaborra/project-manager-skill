@@ -105,5 +105,3 @@ test afirme que la llamada **no** llegó al provider, no solo que tiró la excep
 `uv tool install git+https://github.com/FacuTaborra/claude-pm-skill`, y `pm` queda en el PATH.
 `SKILL.md` viaja como package data (`force-include` en pyproject) porque instalado así el repo no
 existe en disco; `pm install-skill` lo lee con `importlib.resources`.
-
-`pm.py` es un shim deprecado que sobrevive un release para no romper symlinks viejos sin mensaje.

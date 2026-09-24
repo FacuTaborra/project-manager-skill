@@ -84,7 +84,6 @@ PM_NEW_TOKEN=pk_xxx pm creds add --name 4plus --provider clickup
 
 ```bash
 pm creds list      # qué perfiles hay (tokens redactados)
-pm creds import    # si venías de la versión anterior: migra ~/.claude/secrets/*.env
 ```
 
 En Linux/macOS el archivo queda en `chmod 600` solo.
@@ -143,15 +142,6 @@ labels = ["alerts-api"]
 
 Los `*_name` no resuelven nada — mandan los IDs. Están para que los errores digan "modulo-energia" en vez de un número, y para detectar si alguien renombró el tablero.
 
-#### Migrar desde `projects.pm`
-
-```bash
-cd mi-repo
-pm init --from-legacy
-```
-
-Lee la sección de tu repo en el `projects.pm` viejo, resuelve los nombres contra la API, y de paso convierte el campo `label:` en `[defaults] labels` — que ahora sí hace algo.
-
 ---
 
 ## Las barreras
@@ -205,9 +195,7 @@ pm doctor                          # dónde estás parado y qué comando sigue
 pm install-skill --yes             # instala SKILL.md + permisos
 pm creds add --name N --provider P --token T
 pm creds list                      # perfiles (tokens redactados)
-pm creds import                    # migra ~/.claude/secrets/*.env
 pm init                            # escribe .pm.toml en este repo
-pm init --from-legacy              # pre-llena desde el projects.pm viejo
 pm setup --force                   # revalida el scope y refresca el cache
 ```
 

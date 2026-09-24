@@ -14,13 +14,11 @@ from ..application.onboarding import SKILL_FILE, next_step
 from ..application.repo_context import RepoContext
 from ..application.scope import verify_workspace_pin
 from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError, ScopeViolation
-from ..infrastructure.cache import find_legacy_caches
 from ..infrastructure.config_files.credentials_store import (
     credentials_path,
     list_profiles,
     world_readable_warning,
 )
-from ..infrastructure.context.obsidian import DEFAULT_VAULT
 from ..infrastructure.repo_detect import find_pm_file
 from ._wiring import build_provider
 
@@ -40,7 +38,7 @@ def run(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     try:
-        config = RepoContext.load(args.repo_name, profile_override=args.profile)
+        config = RepoContext.load(profile_override=args.profile)
     except PMError as exc:
         print(f"  Config:        FAILED — {exc}")
         return EXIT_ERROR
@@ -70,7 +68,7 @@ def _report_credentials() -> bool:
 
 
 def _report_config(config: RepoContext) -> None:
-    print(f"  Repo:          {config.repo_name}  ({config.repo_root})")
+    print(f"  Repo:          {config.repo_root}")
     print(f"  .pm.toml:      {config.pm_file.path}")
     print(f"  Provider:      {config.provider_type.value}")
     print(f"  Profile:       {config.profile.name}")
@@ -78,22 +76,10 @@ def _report_config(config: RepoContext) -> None:
     if config.pm_file.defaults.labels:
         print(f"  Auto-labels:   {', '.join(config.pm_file.defaults.labels)}")
 
-    if config.vault_path:
-        print(f"  Vault:         {config.vault_path}")
-    else:
-        print(
-            f"  Vault:         not found (CLAUDE_MEMORY_PATH unset and {DEFAULT_VAULT} "
-            f"does not exist). Tracker-only mode."
-        )
     print(
         f"  Cache:         {config.cache_path}"
         f" {'(exists)' if config.cache_path.is_file() else '(not yet)'}"
     )
-
-    if legacy_cache_files := find_legacy_caches(config.vault_path):
-        print(f"  Old caches:    {len(legacy_cache_files)} orphaned file(s), safe to delete:")
-        for path in legacy_cache_files[:5]:
-            print(f"                   {path}")
 
 
 def _report_connectivity(config: RepoContext) -> int:

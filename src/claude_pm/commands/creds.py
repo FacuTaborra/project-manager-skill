@@ -1,4 +1,4 @@
-"""`creds add` / `creds list` / `creds import` — manage `~/.claude/pm/credentials.toml`."""
+"""`creds add` / `creds list` — manage `~/.claude/pm/credentials.toml`."""
 
 from __future__ import annotations
 
@@ -10,13 +10,7 @@ from ..application.onboarding import next_step
 from ..application.profiles import authenticate_token, pick_workspace_id, save_profile
 from ..domain.binding import ProviderType
 from ..exceptions import EXIT_OK, PMError
-from ..infrastructure.config_files.credentials_store import (
-    LEGACY_SECRETS,
-    credentials_path,
-    find_legacy_tokens,
-    list_profiles,
-    write_profiles,
-)
+from ..infrastructure.config_files.credentials_store import credentials_path, list_profiles
 from ._input import can_prompt
 from ._output import print_json
 from ._profile_prompts import TOKEN_SOURCE_HINT, ask_provider, print_profile_saved
@@ -77,33 +71,5 @@ def run_add(args: argparse.Namespace) -> int:
 
     save_profile(name, provider_type, token.strip(), workspace_id, force=args.force)
     print_profile_saved(name, email, reachable, workspace_id)
-    print(next_step().render(), file=sys.stderr)
-    return EXIT_OK
-
-
-def run_import(args: argparse.Namespace) -> int:
-    """Read the old `~/.claude/secrets/*.env` files once and write profiles from them."""
-    path = credentials_path()
-    existing_names = {p.name for p in list_profiles(path)}
-
-    legacy_entries = find_legacy_tokens()
-    if not legacy_entries:
-        locations = ", ".join(str(f) for f, _ in LEGACY_SECRETS.values())
-        raise PMError(
-            f"No legacy tokens found. Looked in: {locations}.\n"
-            f"Use `pm creds add` instead if this is a fresh setup."
-        )
-
-    new_entries = [entry for entry in legacy_entries if entry[0] not in existing_names]
-    if not new_entries:
-        print_json({"ok": True, "added": [], "note": "All legacy tokens are already imported."})
-        return EXIT_OK
-
-    if args.dry_run:
-        print_json({"dry_run": True, "would_add": [name for name, *_ in new_entries]})
-        return EXIT_OK
-
-    write_profiles(path, new_entries)
-    print_json({"ok": True, "path": str(path), "added": [name for name, *_ in new_entries]})
     print(next_step().render(), file=sys.stderr)
     return EXIT_OK

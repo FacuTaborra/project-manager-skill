@@ -15,8 +15,6 @@ from ..domain.binding import CredentialProfile, ProviderType, RepoBinding, Write
 from ..exceptions import ConfigError
 from ..infrastructure.cache import cache_root
 from ..infrastructure.config_files.pm_file import load_pm_file
-from ..infrastructure.context.obsidian import vault_path_from_env
-from ..infrastructure.repo_detect import detect_repo_name
 from .profiles import load_profile
 
 _SLUG_RE = re.compile(r"[^a-z0-9._-]+")
@@ -26,10 +24,8 @@ _SLUG_RE = re.compile(r"[^a-z0-9._-]+")
 class RepoContext:
     pm_file: RepoBinding
     profile: CredentialProfile
-    repo_name: str
     cache_path: Path
     fingerprint: str
-    vault_path: Path | None = None
 
     @property
     def provider_type(self) -> ProviderType:
@@ -46,7 +42,6 @@ class RepoContext:
     @classmethod
     def load(
         cls,
-        repo_name_override: str | None = None,
         *,
         profile_override: str | None = None,
         start: Path | None = None,
@@ -58,23 +53,20 @@ class RepoContext:
         )
         _check_provider_match(pm_file, profile)
 
-        repo_name = repo_name_override or detect_repo_name(pm_file.repo_root)
         fingerprint = _fingerprint(pm_file, profile)
 
         return cls(
             pm_file=pm_file,
             profile=profile,
-            repo_name=repo_name,
-            cache_path=cache_root() / f"{_slug(repo_name)}-{fingerprint}.json",
+            cache_path=cache_root() / f"{_slug(pm_file.repo_root.name)}-{fingerprint}.json",
             fingerprint=fingerprint,
-            vault_path=vault_path_from_env(),
         )
 
     def require_token(self) -> str:
         if not self.profile.token:
             raise ConfigError(
                 f"Credential profile {self.profile.name!r} has no token. "
-                "Fix it with `pm creds import` or by editing credentials.toml."
+                "Fix it with `pm creds add --force` or by editing credentials.toml."
             )
         return self.profile.token
 

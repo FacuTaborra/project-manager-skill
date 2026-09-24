@@ -114,15 +114,3 @@ class DocProvider(Protocol):
     ) -> Doc:
         """Rename a doc, and/or replace a page (or append one when `page_id` is None)."""
         ...
-
-
-class ContextProvider(Protocol):
-    """Read-only context source enriching briefings (Obsidian vault today)."""
-
-    def is_available(self) -> bool:
-        """Whether this context source is reachable / configured."""
-        ...
-
-    def get_status_excerpt(self, repo_name: str, max_chars: int = 1500) -> str | None:
-        """Return a short excerpt of the project's status, or None if unavailable."""
-        ...

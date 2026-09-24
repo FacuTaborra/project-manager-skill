@@ -97,7 +97,7 @@ class TestLoadProfile:
             load_profile("typo", path=_write(tmp_path, TWO_PROFILES))
 
     def test_no_profiles_at_all(self, tmp_path: Path) -> None:
-        with pytest.raises(ConfigError, match="pm creds import"):
+        with pytest.raises(ConfigError, match="pm creds add"):
             load_profile("any", path=tmp_path / "absent.toml")
 
     def test_env_profile_names_the_choice(

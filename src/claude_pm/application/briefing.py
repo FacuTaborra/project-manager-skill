@@ -1,24 +1,20 @@
-"""BriefingService — open issues grouped by state, plus optional vault context."""
+"""BriefingService — open issues grouped by state."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from ..domain.models import Briefing, Issue
-from ..domain.ports import ContextProvider, IssueProvider
+from ..domain.ports import IssueProvider
 
 
 class BriefingService:
-    def __init__(self, provider: IssueProvider, context: ContextProvider) -> None:
+    def __init__(self, provider: IssueProvider) -> None:
         self.provider = provider
-        self.context = context
 
     def generate_per_project(
         self, *, projects: list[dict[str, str]], repo_name: str
     ) -> dict[str, Any]:
-        excerpt = (
-            self.context.get_status_excerpt(repo_name) if self.context.is_available() else None
-        )
         sections = []
         for proj in projects:
             issues = self.provider.list_open_issues(proj["id"])
@@ -36,8 +32,6 @@ class BriefingService:
         return {
             "repo": repo_name,
             "projects": sections,
-            "vault_excerpt": excerpt,
-            "vault_available": self.context.is_available(),
         }
 
     def generate(self, *, project_id: str, project_name: str, repo_name: str) -> Briefing:
@@ -46,15 +40,9 @@ class BriefingService:
         for issue in issues:
             grouped.setdefault(issue.state.name, []).append(issue)
 
-        excerpt = (
-            self.context.get_status_excerpt(repo_name) if self.context.is_available() else None
-        )
-
         return Briefing(
             repo_name=repo_name,
             project_name=project_name,
             issues_by_state=grouped,
             total_open=len(issues),
-            vault_excerpt=excerpt,
-            vault_available=self.context.is_available(),
         )

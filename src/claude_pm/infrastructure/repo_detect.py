@@ -1,4 +1,4 @@
-"""Locate the repo root, its `.pm.toml`, and the name we file it under.
+"""Locate the repo root and its `.pm.toml`.
 
 The repo root — not the cwd basename — is the identity of a project. Two checkouts
 named `api` in different directories are different repos, and `pm` run from a
@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-SESSION_FILE_NAME = ".claude-session-name"
 PM_FILE_NAME = ".pm.toml"
 
 
@@ -48,19 +47,3 @@ def find_pm_file(start: Path | None = None) -> Path | None:
         if root is not None and directory == root:
             break
     return None
-
-
-def detect_repo_name(start: Path | None = None) -> str:
-    """Return the repo name: `.claude-session-name` if present, else the root's basename."""
-    begin = (start or Path.cwd()).resolve()
-    root = find_repo_root(begin) or begin
-    for directory in (root, begin):
-        session_file = directory / SESSION_FILE_NAME
-        if session_file.is_file():
-            try:
-                name = session_file.read_text(encoding="utf-8").strip()
-            except OSError:
-                continue
-            if name:
-                return name
-    return root.name

@@ -47,7 +47,6 @@ def _force_utf8_stdio() -> None:
 
 def _common_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--repo-name", default=None, help="Override the auto-detected repo name.")
     parser.add_argument(
         "--profile",
         default=None,
@@ -60,8 +59,8 @@ def _dry_run_parser(help_text: str | None = None) -> argparse.ArgumentParser:
     """A standalone `--dry-run` flag for commands that don't take the `write` parent.
 
     `create-issue` and friends get `--dry-run` from `_write_parser` instead —
-    this is only for the setup-side commands (`init`, `creds add`, `creds
-    import`, `install-skill`) whose dry run is a preview, not a scope check.
+    this is only for the setup-side commands (`init`, `creds add`,
+    `install-skill`) whose dry run is a preview, not a scope check.
     """
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--dry-run", action="store_true", help=help_text)
@@ -115,13 +114,6 @@ def _add_setup_commands(
     p_init.add_argument("--workspace-id", default=None)
     p_init.add_argument("--space-id", default=None, help="Skip space discovery.")
     p_init.add_argument("--list-id", action="append", default=None, help="Repeatable.")
-    p_init.add_argument(
-        "--from-legacy",
-        nargs="?",
-        const=True,
-        default=None,
-        help="Pre-fill from the old projects.pm (default: ~/.claude/skills/pm/projects.pm).",
-    )
     p_init.add_argument("--force", action="store_true", help="Overwrite an existing .pm.toml.")
     p_init.set_defaults(func=init.run)
 
@@ -154,13 +146,6 @@ def _add_setup_commands(
     p_creds_list = creds_sub.add_parser("list", help="List profiles (tokens redacted).")
     p_creds_list.set_defaults(func=creds.run_list)
 
-    p_creds_import = creds_sub.add_parser(
-        "import",
-        parents=[_dry_run_parser()],
-        help="Import tokens from the legacy ~/.claude/secrets/*.env files.",
-    )
-    p_creds_import.set_defaults(func=creds.run_import)
-
     p_install = sub.add_parser(
         "install-skill",
         parents=[_dry_run_parser("Show what would change.")],
@@ -187,9 +172,7 @@ def _add_read_commands(
     common: argparse.ArgumentParser,
 ) -> None:
     """Everything that only looks at the tracker."""
-    p_brief = sub.add_parser(
-        "briefing", parents=[common], help="Open issues grouped by state, plus vault context."
-    )
+    p_brief = sub.add_parser("briefing", parents=[common], help="Open issues grouped by state.")
     p_brief.set_defaults(func=briefing.run)
 
     p_search = sub.add_parser(

@@ -27,7 +27,6 @@ from ._output import print_json
 def run(args: argparse.Namespace) -> int:
     skill_markdown = _skill_markdown()
     missing_permissions = list_missing_permissions()
-    junction = _junction_target()
 
     if args.dry_run:
         print_json(
@@ -36,23 +35,9 @@ def run(args: argparse.Namespace) -> int:
                 "would_write": str(SKILL_FILE),
                 "would_add_permissions": missing_permissions,
                 "settings": str(settings_path()),
-                "legacy_junction": str(junction) if junction else None,
             }
         )
         return EXIT_OK
-
-    if junction:
-        raise PMError(
-            f"{SKILL_DIR} is a link to {junction}, left behind by the old install script.\n"
-            f"The 'installed' skill would be a working tree that changes as you develop, and "
-            f"writing here would touch that checkout.\n"
-            f"Remove the link first, then re-run:\n"
-            f'  Windows:      cmd /c rmdir "{SKILL_DIR}"\n'
-            f'  Linux/macOS:  rm "{SKILL_DIR}"\n'
-            f"Use cmd's rmdir, which unlinks. In PowerShell `rmdir` is an alias for "
-            f"Remove-Item, which has followed junctions and deleted the target's contents — "
-            f"here, your checkout."
-        )
 
     if missing_permissions and not args.yes and not args.skip_permissions:
         raise PMError(
@@ -83,14 +68,6 @@ def run(args: argparse.Namespace) -> int:
     print_json(payload)
     print(next_step().render(), file=sys.stderr)
     return EXIT_OK
-
-
-def _junction_target() -> Path | None:
-    """The clone a legacy symlink/junction points at, if that is what SKILL_DIR is."""
-    if not SKILL_DIR.exists():
-        return None
-    resolved = SKILL_DIR.resolve()
-    return resolved if resolved != SKILL_DIR else None
 
 
 def _skill_markdown() -> str:

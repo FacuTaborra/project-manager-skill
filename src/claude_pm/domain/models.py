@@ -91,5 +91,3 @@ class Briefing:
     project_name: str
     issues_by_state: dict[str, list[Issue]] = field(default_factory=dict)
     total_open: int = 0
-    vault_excerpt: str | None = None
-    vault_available: bool = False

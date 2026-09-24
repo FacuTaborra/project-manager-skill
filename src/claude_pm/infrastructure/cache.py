@@ -152,13 +152,3 @@ def _pairs(raw: Any) -> tuple[dict[str, str], ...]:
 
 def _opt_str(value: Any) -> str | None:
     return str(value) if value else None
-
-
-def find_legacy_caches(vault_path: Path | None) -> list[Path]:
-    """Orphaned v1 cache files, so `doctor` can tell the user they are safe to delete."""
-    if vault_path is None:
-        return []
-    projects = vault_path / "proyectos"
-    if not projects.is_dir():
-        return []
-    return sorted(projects.glob("*/.[a-z]*-cache.json"))

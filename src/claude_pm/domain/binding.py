@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 from ..exceptions import PMError
 
@@ -92,21 +92,6 @@ class RepoBinding:
     scope: WriteScope
     defaults: IssueDefaults = field(default_factory=IssueDefaults)
     version: int = PM_FILE_VERSION
-
-
-class ProfileEntry(NamedTuple):
-    """A credential profile as it is written or discovered, before it is parsed
-    back into a `CredentialProfile`.
-
-    Named so callers stop threading an anonymous 4-tuple through
-    `write_profiles` and `find_legacy_tokens` — the position of `token` in a
-    bare tuple is not something a reader should have to remember.
-    """
-
-    name: str
-    provider_type: ProviderType
-    token: str
-    workspace_id: str | None
 
 
 @dataclass(frozen=True)
