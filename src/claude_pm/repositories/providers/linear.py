@@ -42,7 +42,7 @@ query($id: ID!) {{
   issues(filter: {{project: {{id: {{eq: $id}}}},
                   state: {{name: {{nin: {_CLOSED_STATE_NAMES}}}}}}},
          first: {_OPEN_ISSUES_PAGE_SIZE}) {{
-    nodes {{ identifier title priority url state {{ id name }} }}
+    nodes {{ identifier title priority url state {{ id name }} parent {{ identifier }} }}
   }}
 }}
 """
@@ -220,13 +220,14 @@ class LinearProvider:
         data = self._query(
             "query($q: String!) { issues(filter: {identifier: {eq: $q}}) "
             "{ nodes { identifier title priority url description state { id name } "
-            "project { id name } } } }",
+            "project { id name } parent { identifier } "
+            "children { nodes { identifier title priority url state { id name } } } } } }",
             {"q": issue_id},
         )
         nodes = (data.get("issues") or {}).get("nodes") or []
         if not nodes:
             raise ProviderError(f"Issue '{issue_id}' not found.")
-        return _to_issue(nodes[0], with_project=True, with_description=True)
+        return _to_issue(nodes[0], with_project=True, with_description=True, with_subtasks=True)
 
     def update_issue(self, update: IssueUpdate) -> Issue:
         """Resolves the identifier (e.g. FAC-12) to its UUID before mutating."""
@@ -264,7 +265,11 @@ class LinearProvider:
 
 
 def _to_issue(
-    node: dict[str, Any], *, with_project: bool = False, with_description: bool = False
+    node: dict[str, Any],
+    *,
+    with_project: bool = False,
+    with_description: bool = False,
+    with_subtasks: bool = False,
 ) -> Issue:
     state_node = node.get("state") or {}
     project: Project | None = None
@@ -281,4 +286,8 @@ def _to_issue(
         url=node.get("url"),
         project=project,
         description=node.get("description") if with_description else None,
+        parent_id=(node.get("parent") or {}).get("identifier"),
+        subtasks=tuple(_to_issue(c) for c in (node.get("children") or {}).get("nodes") or [])
+        if with_subtasks
+        else (),
     )

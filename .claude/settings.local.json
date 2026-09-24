@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "mcp__linear__linear_list_projects"
+      "mcp__linear__linear_list_projects",
+      "PowerShell(.venv/Scripts/python.exe -m pip install vulture -q 2>$null)",
+      "PowerShell(.venv/Scripts/python.exe -m vulture src --min-confidence 60)",
+      "PowerShell(.venv/Scripts/python.exe -m vulture src tests --min-confidence 60)",
+      "Bash(uv venv *)",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(.venv/Scripts/python.exe -m vulture src --min-confidence 60)",
+      "Bash(.venv/Scripts/python.exe -m vulture src tests --min-confidence 60)",
+      "Bash(xargs wc -l)",
+      "Bash(cd /c/Users/facun/.claude/skills/archify && ls schemas examples && wc -c schemas/workflow*.json schemas/common.schema.json examples/*workflow* 2>/dev/null)",
+      "Read(//c/Users/facun/.claude/skills/archify/**)",
+      "Bash(node bin/archify.mjs validate workflow __TRACKED_VAR__/pm-comando.workflow.json --quality showcase --json)",
+      "Bash(node scripts/check-update.mjs)",
+      "Bash(node -e 'const f=process.argv[1];const fs=require\\('\\\\''fs'\\\\''\\);const j=JSON.parse\\(fs.readFileSync\\(f\\)\\);j.nodes.forEach\\(n=>n.width=150\\);fs.writeFileSync\\(f,JSON.stringify\\(j,null,2\\)\\)' __TRACKED_VAR__/pm-comando.workflow.json)",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{const r=JSON.parse\\(s\\);console.log\\(r.ok, r.error||''\\);\\(r.diagnostics||[]\\).forEach\\(d=>console.log\\(d.severity,d.code,d.message,JSON.stringify\\(d.subject\\),JSON.stringify\\(d.supportedFixes\\)\\)\\);if\\(r.checks\\)console.log\\(JSON.stringify\\(r.checks\\).slice\\(0,800\\)\\)}\\)\")",
+      "PowerShell($i = Get-Item \"$env:USERPROFILE\\\\.claude\\\\skills\\\\pm\" -Force; \"$\\($i.LinkType\\) -> $\\($i.Target\\)\"; \\(Get-Command pm\\).Source; & pm --version)"
     ]
   }
 }

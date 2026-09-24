@@ -24,6 +24,8 @@ CLICKUP_API_BASE = "https://api.clickup.com/api/v2"
 CLICKUP_API_V3_BASE = "https://api.clickup.com/api/v3"
 
 _CLOSED_STATUS_TYPES = {"done", "closed"}
+# Subtasks are left out of list task reads unless asked for.
+_OPEN_TASKS_QUERY = "archived=false&include_closed=false&subtasks=true"
 # ClickUp's parent type for "the workspace itself" when creating a doc.
 _DOC_PARENT_TYPE_WORKSPACE = 4
 _MARKDOWN_FORMAT = "text/md"
@@ -141,8 +143,21 @@ class ClickUpProvider:
         return None
 
     def list_open_issues(self, project_id: str) -> list[Issue]:
-        data = self._get(f"list/{project_id}/task?archived=false&include_closed=false")
-        return [_to_issue(t) for t in data.get("tasks") or [] if not _is_done(t)]
+        return [_to_issue(t) for t in self._open_tasks(project_id) if not _is_done(t)]
+
+    def _open_tasks(self, project_id: str) -> list[dict[str, Any]]:
+        """ClickUp pages this endpoint at 100 tasks; `last_page` says when to stop."""
+        tasks: list[dict[str, Any]] = []
+        page = 0
+        while True:
+            data = self._get(f"list/{project_id}/task?{_OPEN_TASKS_QUERY}&page={page}")
+            batch = data.get("tasks") or []
+            tasks.extend(batch)
+            if not batch or data.get("last_page", True):
+                break
+            page += 1
+
+        return tasks
 
     def search_issues(self, query: str, *, project_id: str | None = None) -> list[Issue]:
         workspace_id = self._require_workspace_id()
@@ -170,8 +185,8 @@ class ClickUpProvider:
         return _to_issue(self._post(f"list/{draft.project_id}/task", body))
 
     def get_issue(self, issue_id: str) -> Issue:
-        data = self._get(f"task/{issue_id}?include_markdown_description=true")
-        return _to_issue(data, with_project=True, with_description=True)
+        data = self._get(f"task/{issue_id}?include_markdown_description=true&include_subtasks=true")
+        return _to_issue(data, with_project=True, with_description=True, with_subtasks=True)
 
     def update_issue(self, update: IssueUpdate) -> Issue:
         body: dict[str, Any] = {}
@@ -251,7 +266,11 @@ def _is_done(task: dict[str, Any]) -> bool:
 
 
 def _to_issue(
-    task: dict[str, Any], *, with_project: bool = False, with_description: bool = False
+    task: dict[str, Any],
+    *,
+    with_project: bool = False,
+    with_description: bool = False,
+    with_subtasks: bool = False,
 ) -> Issue:
     status_name = (task.get("status") or {}).get("status", "Unknown")
     project: Project | None = None
@@ -270,6 +289,8 @@ def _to_issue(
         description=(task.get("markdown_description") or task.get("description"))
         if with_description
         else None,
+        parent_id=task.get("parent"),
+        subtasks=tuple(_to_issue(s) for s in task.get("subtasks") or []) if with_subtasks else (),
     )
 
 

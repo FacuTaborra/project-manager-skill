@@ -49,7 +49,7 @@ If the user asks you to install or set up the tool, the same applies: run `pm do
 |---|---|
 | `doctor` | Check config, scope and connectivity. Run if anything looks broken. |
 | `briefing` | Open issues grouped by state. Outputs JSON. |
-| `get-issue --id <ID>` | Fetch one issue — title, description, state, priority, url. |
+| `get-issue --id <ID>` | Fetch one issue — title, description, state, priority, url, `parent_id`, and its `subtasks`. |
 | `search "<query>"` | Search issues for duplicate detection before planning. |
 | `create-issue --title T (--description "..." \| --description-file F) [--state S] [--priority N] [--assignee EMAIL] [--label L] [--project-id ID] [--dry-run]` | Create one issue. |
 | `update-issue --id <ID> [--title T] [--description "..." \| --description-file F] [--state S] [--priority N] [--assignee EMAIL] [--dry-run]` | Update an existing issue. |
@@ -95,6 +95,8 @@ pm briefing
 ```
 
 Parse the JSON. With a single list it has `issues_by_state` at the top level; with several it has a `projects` array — present each as a section.
+
+Subtasks come in the same lists as any other issue, with `parent_id` set to their parent's identifier (`null` for top-level issues). When a parent is also in the briefing, nest its subtasks under it instead of listing them separately.
 
 ```
 ## PM Briefing — <repo>

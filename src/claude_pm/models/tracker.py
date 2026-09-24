@@ -52,6 +52,8 @@ class Issue:
     url: str | None = None
     project: Project | None = None
     description: str | None = None
+    parent_id: str | None = None
+    subtasks: tuple[Issue, ...] = ()
 
 
 @dataclass(frozen=True)

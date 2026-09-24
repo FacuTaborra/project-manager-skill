@@ -24,7 +24,12 @@ class FakeProvider:
     def list_open_issues(self, project_id: str) -> list[Issue]:
         return [
             Issue(identifier=f"{project_id}-1", title="a", state=State(id="s1", name="Backlog")),
-            Issue(identifier=f"{project_id}-2", title="b", state=State(id="s2", name="Doing")),
+            Issue(
+                identifier=f"{project_id}-2",
+                title="b",
+                state=State(id="s2", name="Doing"),
+                parent_id=f"{project_id}-1",
+            ),
         ]
 
 
@@ -51,6 +56,15 @@ def test_a_single_list_is_flat(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
     assert output["repo"] == "repo"
     assert output["total_open"] == 2
     assert [i["identifier"] for i in output["issues_by_state"]["Backlog"]] == ["l1-1"]
+
+
+def test_subtasks_carry_their_parent_and_top_level_issues_carry_null(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    output = _run((ProjectRef(id="l1", name="Main"),), monkeypatch, capsys)
+    assert output["issues_by_state"]["Backlog"][0]["parent_id"] is None
+    assert output["issues_by_state"]["Doing"][0]["parent_id"] == "l1-1"
+    assert "subtasks" not in output["issues_by_state"]["Doing"][0]
 
 
 def test_several_lists_come_as_sections_in_pm_toml_order(

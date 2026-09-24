@@ -22,9 +22,12 @@ def issue_to_dict(issue: Issue, *, with_description: bool = False) -> dict[str, 
         "project": (
             {"id": issue.project.id, "name": issue.project.name} if issue.project else None
         ),
+        "parent_id": issue.parent_id,
     }
     if with_description:
         payload["description"] = issue.description
+        payload["subtasks"] = [issue_to_dict(s) for s in issue.subtasks]
+
     return payload
 
 
