@@ -51,6 +51,21 @@ class TestGetJson:
         ):
             client.get_json("https://example.com/api")
 
+    def test_401_carries_the_auth_hint(self) -> None:
+        client = HttpClient(headers={}, auth_hint="Profile 'x' was rejected.")
+        with (
+            patch("urllib.request.urlopen", side_effect=_http_error(401)),
+            pytest.raises(ProviderError, match="Profile 'x' was rejected"),
+        ):
+            client.get_json("https://example.com/api")
+
+    def test_without_a_hint_it_keeps_the_generic_advice(self) -> None:
+        with (
+            patch("urllib.request.urlopen", side_effect=_http_error(401)),
+            pytest.raises(ProviderError, match="Check your API key"),
+        ):
+            _make_client().get_json("https://example.com/api")
+
     def test_403_raises_provider_error_immediately(self) -> None:
         client = _make_client()
         with (

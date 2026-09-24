@@ -33,9 +33,8 @@ class IssueProvider(Protocol):
     def reachable_workspace_ids(self) -> list[str]:
         """Workspaces/organizations this token can reach.
 
-        Linear returns its single `organization.id`, ClickUp every team id. The
-        scope guard compares this against the workspace declared in `.pm.toml`,
-        so a rotated or mismatched token is caught before anything is written.
+        Linear returns its single `organization.id`, ClickUp every team id.
+        `pm doctor` compares this against the workspace declared in `.pm.toml`.
         """
         ...
 

@@ -48,8 +48,9 @@ class ClickUpProvider:
         *,
         workspace_id: str | None = None,
         http: HttpClient | None = None,
+        auth_hint: str = "",
     ) -> None:
-        self._http = http or HttpClient(headers={"Authorization": token})
+        self._http = http or HttpClient(headers={"Authorization": token}, auth_hint=auth_hint)
         # Pinned from config, never discovered. Picking `teams[0]` meant the board
         # you wrote to depended on the order ClickUp happened to return.
         self._workspace_id = workspace_id

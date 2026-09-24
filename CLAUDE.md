@@ -35,7 +35,7 @@ Dependencias runtime: **cero**. Solo stdlib, y así queda. Si algo parece necesi
 casi siempre son 40 líneas a mano con mejores mensajes de error.
 
 `commands/_wiring.py` tiene los dos composition roots: `prepare_read()` (sin guard, sin costo de
-verificación) y `prepare_write()` (con guard, valida el pin de workspace).
+verificación) y `prepare_write()` (con guard).
 
 ## Configuración
 

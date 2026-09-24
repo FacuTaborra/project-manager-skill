@@ -43,11 +43,9 @@ class LinearProvider:
         *,
         workspace_id: str | None = None,
         http: HttpClient | None = None,
+        auth_hint: str = "",
     ) -> None:
-        self._http = http or HttpClient(headers={"Authorization": token})
-        # Linear routes by team/project, so the pin is never part of a URL here.
-        # It is accepted anyway so the guard can verify it the same way for both
-        # providers, with no per-provider branching at the call site.
+        self._http = http or HttpClient(headers={"Authorization": token}, auth_hint=auth_hint)
         self._workspace_id = workspace_id
 
     def _query(self, graphql: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:

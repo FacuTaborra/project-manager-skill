@@ -2,23 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from src.claude_pm.application.repo_context import RepoContext
-from src.claude_pm.application.scope import (
-    DryRun,
-    ScopeGuard,
-    build_guard,
-    verify_workspace_pin,
-)
+from src.claude_pm.application.scope import DryRun, ScopeGuard
 from src.claude_pm.domain.binding import (
-    CredentialProfile,
     IssueDefaults,
-    ProviderType,
-    RepoBinding,
     ScopeProject,
     WriteScope,
 )
@@ -49,10 +39,8 @@ class FakeProvider:
     def __init__(
         self,
         owners: dict[str, str | None] | None = None,
-        reachable: tuple[str, ...] = ("ws-1",),
     ) -> None:
         self.owners = owners or {}
-        self.reachable = reachable
         self.calls: list[tuple[str, Any]] = []
 
     def _issue(self, identifier: str, project_id: str | None) -> Issue:
@@ -94,10 +82,6 @@ class FakeProvider:
     def list_labels(self, team_id: str) -> list[Label]:
         self.calls.append(("list_labels", team_id))
         return [Label(id="alerts-api", name="alerts-api"), Label(id="bug", name="bug")]
-
-    def reachable_workspace_ids(self) -> list[str]:
-        self.calls.append(("reachable_workspace_ids", None))
-        return list(self.reachable)
 
     def names(self) -> list[str]:
         return [name for name, _ in self.calls]
@@ -353,53 +337,3 @@ class TestResolution:
         with pytest.raises(PMError, match="does not exist in this space"):
             _guard(provider).create_issue(title="T", description="D", labels=["nope"])
         assert "create_issue" not in provider.names()
-
-
-class TestBuildGuard:
-    """The workspace pin, checked once before any write is possible."""
-
-    def _config(self, *, workspace_id: str = "ws-1") -> RepoContext:
-        pm_file = RepoBinding(
-            path=Path("/repo/.pm.toml"),
-            repo_root=Path("/repo"),
-            provider_type=ProviderType.CLICKUP,
-            profile_name="4plus",
-            scope=WriteScope(
-                workspace_id=workspace_id,
-                team_id="space-1",
-                projects=(ScopeProject(id=IN_SCOPE, name="modulo-energia"),),
-            ),
-        )
-        return RepoContext(
-            pm_file=pm_file,
-            profile=CredentialProfile("4plus", ProviderType.CLICKUP, "pk_x", workspace_id),
-        )
-
-    def test_a_reachable_workspace_yields_a_guard(self) -> None:
-        guard = build_guard(self._config(), FakeProvider(reachable=("ws-1",)))
-        assert guard.scope.workspace_id == "ws-1"
-
-    def test_an_unreachable_workspace_is_refused(self) -> None:
-        """Wrong profile, or a rotated token — caught before anything is written."""
-        with pytest.raises(ScopeViolation, match="cannot reach workspace"):
-            build_guard(self._config(), FakeProvider(reachable=("ws-other",)))
-
-    def test_the_refusal_says_what_the_token_does_reach(self) -> None:
-        with pytest.raises(ScopeViolation, match="ws-other"):
-            build_guard(self._config(), FakeProvider(reachable=("ws-other",)))
-
-    def test_repo_defaults_are_carried_into_the_guard(self) -> None:
-        guard = build_guard(self._config(), FakeProvider(), dry_run=True)
-        assert guard.dry_run is True
-        assert guard.allow_structural_changes is False
-
-    def test_the_pin_can_be_skipped_when_already_checked(self) -> None:
-        """prepare_write verifies it earlier, so the guard must not pay for it twice."""
-        provider = FakeProvider(reachable=("ws-other",))
-        guard = build_guard(self._config(), provider, check_workspace_pin=False)
-        assert "reachable_workspace_ids" not in provider.names()
-        assert guard.scope.workspace_id == "ws-1"
-
-    def test_verify_workspace_pin_is_callable_on_its_own(self) -> None:
-        with pytest.raises(ScopeViolation, match="cannot reach workspace"):
-            verify_workspace_pin(self._config(), FakeProvider(reachable=("ws-other",)))

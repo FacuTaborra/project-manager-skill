@@ -152,7 +152,7 @@ Ninguna depende de que el modelo se porte bien.
 |---|---|
 | **Scope lock** | Toda escritura valida su destino contra `[scope]`. Un `--project-id` de otro tablero aborta con exit 4. |
 | **Verificación de pertenencia** | `update-issue` lee la task antes de tocarla: si vive en otra lista, aborta. |
-| **Pin de workspace** | Si el token del perfil no alcanza el workspace declarado, no se escribe nada. |
+| **Pin de workspace** | Si el perfil está atado a otro workspace, falla antes de llamar a la API. Si el token no alcanza el tablero, la API lo rechaza y el error dice qué perfil y qué hacer. `pm doctor` lo verifica explícitamente. |
 | **`--dry-run`** | Muestra el destino resuelto por nombre y el payload exacto, sin tocar la API. |
 | **Cambios de estructura apagados** | `create-project` y `create-team` requieren `--allow-structural-changes`, y están fuera del contrato del skill. |
 

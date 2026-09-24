@@ -12,9 +12,8 @@ import sys
 
 from ..application.onboarding import SKILL_FILE, next_step
 from ..application.repo_context import RepoContext
-from ..application.scope import verify_workspace_pin
 from ..application.scope_discovery import verify_declared_scope
-from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError, ScopeViolation
+from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError
 from ..infrastructure.config_files.credentials_store import (
     credentials_path,
     list_profiles,
@@ -87,10 +86,13 @@ def _report_connectivity(config: RepoContext) -> int:
         print(f"  Provider ping: FAILED — {exc}")
         return EXIT_ERROR
 
-    try:
-        verify_workspace_pin(config, provider)
-    except ScopeViolation as exc:
-        print(f"  Pin workspace: FAILED — {exc}")
+    reachable = provider.reachable_workspace_ids()
+    if config.scope.workspace_id not in reachable:
+        print(
+            f"  Pin workspace: FAILED — profile {config.profile.name!r} cannot reach workspace "
+            f"{config.scope.workspace_id}. It reaches: {', '.join(reachable) or '(none)'}. "
+            "Wrong profile for this repo, or the token was rotated."
+        )
         return EXIT_ERROR
 
     print(f"  Pin workspace: ok — the token reaches {config.scope.workspace_id}")

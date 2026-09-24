@@ -24,7 +24,6 @@ from ..domain.binding import IssueDefaults, WriteScope
 from ..domain.models import Doc, Issue, IssueDraft, IssueUpdate, Project, Team
 from ..domain.ports import DocProvider, IssueProvider
 from ..exceptions import NeedsChoice, PMError, ScopeViolation
-from .repo_context import RepoContext
 
 
 @dataclass(frozen=True)
@@ -254,10 +253,8 @@ class ScopeGuard:
         )
 
     def create_doc(self, *, title: str, content: str | None) -> Doc | DryRun:
-        """Docs live at workspace level, so there is no list to authorize.
-
-        The workspace pin checked when the guard was built is what keeps them
-        in the right account.
+        """Docs live at workspace level, so there is no list to authorize: the provider
+        is built pinned to the `.pm.toml` workspace, and that is what keeps them there.
         """
         docs = self._require_doc_provider("create-doc")
         return self._mutate(
@@ -365,46 +362,3 @@ class ScopeGuard:
                 )
             resolved.append(label_id)
         return tuple(resolved)
-
-
-def verify_workspace_pin(config: RepoContext, provider: IssueProvider) -> None:
-    """Check the token reaches the declared workspace, before anything else does.
-
-    Called ahead of cache refresh rather than after it: every other request is
-    already addressed to the declared workspace, so a mismatch would otherwise
-    surface as a raw 401 from the tracker instead of a message that says which
-    profile is wrong.
-    """
-    declared = config.scope.workspace_id
-    reachable = provider.reachable_workspace_ids()
-    if declared not in reachable:
-        raise ScopeViolation(
-            f"The token for profile {config.profile.name!r} cannot reach workspace "
-            f"{declared} declared in {config.pm_file.path}. "
-            f"It reaches: {', '.join(reachable) or '(none)'}. "
-            f"Wrong profile for this repo, or the token was rotated."
-        )
-
-
-def build_guard(
-    config: RepoContext,
-    provider: IssueProvider,
-    *,
-    dry_run: bool = False,
-    allow_structural_changes: bool = False,
-    check_workspace_pin: bool = True,
-) -> ScopeGuard:
-    """Composition root for writes.
-
-    `check_workspace_pin=False` is for callers that already ran
-    `verify_workspace_pin`, so the check is not paid for twice.
-    """
-    if check_workspace_pin:
-        verify_workspace_pin(config, provider)
-    return ScopeGuard(
-        provider=provider,
-        scope=config.scope,
-        defaults=config.pm_file.defaults,
-        dry_run=dry_run,
-        allow_structural_changes=allow_structural_changes,
-    )

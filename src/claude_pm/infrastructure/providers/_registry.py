@@ -26,7 +26,9 @@ class ProviderFactory(Protocol):
     would leave the call below unchecked. Adapter classes satisfy this structurally.
     """
 
-    def __call__(self, token: str, *, workspace_id: str | None = None) -> IssueProvider: ...
+    def __call__(
+        self, token: str, *, workspace_id: str | None = None, auth_hint: str = ""
+    ) -> IssueProvider: ...
 
 
 PROVIDERS: dict[ProviderType, ProviderFactory] = {
@@ -36,7 +38,11 @@ PROVIDERS: dict[ProviderType, ProviderFactory] = {
 
 
 def create_provider(
-    provider_type: ProviderType, *, token: str, workspace_id: str | None = None
+    provider_type: ProviderType,
+    *,
+    token: str,
+    workspace_id: str | None = None,
+    auth_hint: str = "",
 ) -> IssueProvider:
     """Instantiate a provider by type, pinned to a token and (optionally) a workspace."""
     if provider_type not in PROVIDERS:
@@ -45,4 +51,4 @@ def create_provider(
             f"Unknown provider '{provider_type}'. Available: {available}. "
             f"See CONTRIBUTING.md to add a new provider."
         )
-    return PROVIDERS[provider_type](token=token, workspace_id=workspace_id)
+    return PROVIDERS[provider_type](token=token, workspace_id=workspace_id, auth_hint=auth_hint)

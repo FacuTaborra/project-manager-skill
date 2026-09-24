@@ -24,10 +24,12 @@ class HttpClient:
         headers: dict[str, str],
         timeout: int = 30,
         max_retries: int = 1,
+        auth_hint: str = "",
     ) -> None:
         self.headers = headers
         self.timeout = timeout
         self.max_retries = max_retries
+        self.auth_hint = auth_hint
 
     def get_json(self, url: str) -> Any:
         req = urllib.request.Request(url, headers=self.headers, method="GET")
@@ -71,7 +73,7 @@ class HttpClient:
                 if e.code in (401, 403):
                     raise ProviderError(
                         f"Authentication rejected (HTTP {e.code}). "
-                        f"Check your API key and scopes. Detail: {detail[:200]}"
+                        f"{self.auth_hint or 'Check your API key and scopes.'} Detail: {detail[:200]}"
                     ) from e
                 if e.code >= 500 and attempt < self.max_retries:
                     last_err = e
