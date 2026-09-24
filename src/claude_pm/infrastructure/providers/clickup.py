@@ -199,7 +199,7 @@ class ClickUpProvider:
         return _to_issue(data)
 
     def get_issue(self, issue_id: str) -> Issue:
-        data = self._get(f"task/{issue_id}")
+        data = self._get(f"task/{issue_id}?include_markdown_description=true")
         return _to_issue(data, with_project=True, with_description=True)
 
     def update_issue(self, update: IssueUpdate) -> Issue:
@@ -300,7 +300,9 @@ def _to_issue(
         priority=_map_priority(task.get("priority")),
         url=task.get("url"),
         project=project,
-        description=task.get("description") if with_description else None,
+        description=(task.get("markdown_description") or task.get("description"))
+        if with_description
+        else None,
     )
 
 

@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..exceptions import ConfigError
+
 REQUIRED_PERMISSIONS = [
     "Bash(pm:*)",
     "Write(~/.claude/tmp_*.md)",
@@ -43,11 +45,11 @@ def register_permissions(path: Path | None = None) -> tuple[list[str], list[str]
     if not missing:
         return [], []
 
-    settings = _read(target)
+    settings = _read(target, strict=True)
     perms = settings.setdefault("permissions", {})
     allow = perms.setdefault("allow", [])
     if not isinstance(allow, list):
-        raise ValueError(f"{target}: permissions.allow is not a list.")
+        raise ConfigError(f"{target}: permissions.allow is not a list. Fix it by hand and re-run.")
     allow.extend(missing)
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -60,9 +62,20 @@ def register_permissions(path: Path | None = None) -> tuple[list[str], list[str]
     return [entry for entry in missing if entry not in still_missing], still_missing
 
 
-def _read(path: Path) -> dict[str, Any]:
+def _read(path: Path, *, strict: bool = False) -> dict[str, Any]:
+    """`strict` is for the write path: rewriting a file we could not parse would wipe it."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
         return {}
-    return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError as exc:
+        if strict:
+            raise ConfigError(
+                f"{path} is not valid JSON ({exc}). Fix it by hand and re-run."
+            ) from exc
+        return {}
+    if isinstance(data, dict):
+        return data
+    if strict:
+        raise ConfigError(f"{path} does not hold a JSON object. Fix it by hand and re-run.")
+    return {}

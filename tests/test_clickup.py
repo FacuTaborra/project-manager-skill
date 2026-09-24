@@ -287,3 +287,29 @@ class TestPostThroughInjectedHttp:
         provider.create_doc("Doc")
 
         assert any(url.endswith("workspaces/ws-1/docs") for url, _ in http.posts)
+
+
+_TASK = {
+    "id": "abc",
+    "name": "Title",
+    "status": {"status": "open", "type": "open"},
+    "list": {"id": "list-1", "name": "List"},
+    "description": "plain text",
+    "markdown_description": "## Markdown",
+}
+
+
+class TestGetIssue:
+    def test_asks_for_the_markdown_description(self) -> None:
+        provider, http = _provider({"task/abc": _TASK})
+        provider.get_issue("abc")
+        assert "include_markdown_description=true" in http.get_urls[0]
+
+    def test_returns_the_markdown_that_was_written(self) -> None:
+        provider, _ = _provider({"task/abc": _TASK})
+        assert provider.get_issue("abc").description == "## Markdown"
+
+    def test_falls_back_to_the_plain_description(self) -> None:
+        task = {k: v for k, v in _TASK.items() if k != "markdown_description"}
+        provider, _ = _provider({"task/abc": task})
+        assert provider.get_issue("abc").description == "plain text"
