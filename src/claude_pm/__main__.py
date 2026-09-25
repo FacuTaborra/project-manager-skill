@@ -1,4 +1,4 @@
-"""Entry point for `python -m pm`."""
+"""Entry point for `python -m claude_pm`."""
 
 from __future__ import annotations
 

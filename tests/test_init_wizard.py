@@ -1,9 +1,4 @@
-"""The wizard, and the guarantee that it did not disturb the machine protocol.
-
-`pm init` has two consumers. A person gets questions; Claude gets exit 2 with a
-payload. The second must stay exactly as it was, so the tests here assert both
-sides of the same code path.
-"""
+"""`pm init` asks a person and tells everyone else which flag to pass."""
 
 from __future__ import annotations
 
@@ -12,19 +7,33 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.commands import _helpers, init
-from src.claude_pm.exceptions import NeedsChoice, PMError
+from src.claude_pm.commands import _input, init
+from src.claude_pm.enums import ProviderType
+from src.claude_pm.exceptions import EXIT_ERROR, PMError
+from src.claude_pm.models.repo_config import CredentialProfile
+from src.claude_pm.models.tracker import Project, Team
+
+PROFILE = CredentialProfile("urbs", ProviderType.CLICKUP, "pk_secret")
+
+
+class FakeProvider:
+    def list_workspaces(self) -> list[Team]:
+        return [Team(id="w1", name="One", key="w1"), Team(id="w2", name="Two", key="w2")]
+
+    def list_teams(self) -> list[Team]:
+        return [Team(id="s1", name="Space", key="s1")]
+
+    def list_projects(self, team_id: str | None = None) -> list[Project]:
+        return [Project(id="l1", name="List")]
 
 
 def _args(**overrides: object) -> argparse.Namespace:
     base: dict[str, object] = {
-        "repo_name": None,
         "profile": None,
         "provider": None,
         "workspace_id": None,
         "space_id": None,
         "list_id": None,
-        "from_legacy": None,
         "force": False,
         "dry_run": False,
         "no_input": False,
@@ -33,130 +42,77 @@ def _args(**overrides: object) -> argparse.Namespace:
     return argparse.Namespace(**base)
 
 
-class TestMachineProtocolUnchanged:
-    def test_no_input_never_prompts_even_on_a_tty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
-        monkeypatch.setattr(
-            init,
-            "_run_once",
-            lambda _a: (_ for _ in ()).throw(NeedsChoice("pick", {"action": "x"})),
-        )
-        monkeypatch.setattr("builtins.input", lambda _: pytest.fail("prompted despite --no-input"))
-        with pytest.raises(NeedsChoice):
-            init.run(_args(no_input=True))
+@pytest.fixture
+def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(init, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(init, "list_profiles", lambda: [PROFILE])
+    monkeypatch.setattr(init, "create_provider", lambda *_a, **_kw: FakeProvider())
+    monkeypatch.setattr(init, "next_step", lambda _root: type("S", (), {"render": lambda s: ""})())
+    return tmp_path
 
-    def test_without_a_tty_the_payload_comes_back_untouched(
-        self, monkeypatch: pytest.MonkeyPatch
+
+class TestWithoutAPerson:
+    def test_no_input_never_prompts_even_on_a_tty(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        payload = {"action": "choose-workspace", "workspaces": [{"id": "w1", "name": "One"}]}
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: False)
-        monkeypatch.setattr(
-            init, "_run_once", lambda _a: (_ for _ in ()).throw(NeedsChoice("pick", payload))
-        )
-        with pytest.raises(NeedsChoice) as excinfo:
+        monkeypatch.setattr(_input, "is_interactive", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda _: pytest.fail("prompted despite --no-input"))
+        with pytest.raises(PMError) as excinfo:
+            init.run(_args(no_input=True))
+        assert excinfo.value.exit_code == EXIT_ERROR
+        assert "--workspace-id" in str(excinfo.value)
+
+    def test_the_error_lists_every_option(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_input, "is_interactive", lambda: False)
+        with pytest.raises(PMError, match="w1") as excinfo:
             init.run(_args())
-        assert excinfo.value.payload == payload
-        assert excinfo.value.exit_code == 2
+        assert "w2" in str(excinfo.value)
+
+    def test_the_flag_answers_it(self, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_input, "is_interactive", lambda: False)
+        assert init.run(_args(workspace_id="w2")) == 0
+        assert 'workspace_id   = "w2"' in (repo / ".pm.toml").read_text(encoding="utf-8")
 
 
-class TestWizardLoop:
-    def _answers(self, monkeypatch: pytest.MonkeyPatch, answers: list[str]) -> None:
-        stream = iter(answers)
-        monkeypatch.setattr("builtins.input", lambda _: next(stream))
-
-    def test_it_answers_each_question_and_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        payloads = [
-            {
-                "action": "choose-workspace",
-                "workspaces": [{"id": "w1", "name": "A"}, {"id": "w2", "name": "B"}],
-            },
-            {
-                "action": "choose-list",
-                "lists": [{"id": "l1", "name": "X"}, {"id": "l2", "name": "Y"}],
-            },
-        ]
-        seen: list[argparse.Namespace] = []
-
-        def fake_run_once(args: argparse.Namespace) -> int:
-            seen.append(args)
-            if payloads:
-                raise NeedsChoice("pick", payloads.pop(0))
-            return 0
-
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
-        monkeypatch.setattr(init, "list_profiles", lambda: [object()])
-        monkeypatch.setattr(init, "_run_once", fake_run_once)
-        self._answers(monkeypatch, ["2", "1,2"])
-
-        args = _args()
-        assert init.run(args) == 0
-        assert args.workspace_id == "w2"
-        assert args.list_id == ["l1", "l2"]
-        assert len(seen) == 3
-
-    def test_an_unknown_action_is_reported_not_ignored(self) -> None:
-        with pytest.raises(PMError, match="interactively"):
-            init._answer(_args(), {"action": "choose-something-new"})
-
-
-class TestOptionShapes:
-    """Payloads carry options in a few shapes; the menu has to read all of them."""
-
-    def test_id_and_name(self) -> None:
-        options = init._options([{"id": "w1", "name": "Urbs Data"}])
-        assert (options[0].id, options[0].label, options[0].detail) == ("w1", "Urbs Data", "w1")
-
-    def test_plain_strings(self) -> None:
-        options = init._options(["clickup", "linear"])
-        assert [o.id for o in options] == ["clickup", "linear"]
-        assert options[0].label == "clickup"
-
-    def test_a_redacted_profile_uses_its_name_as_the_id(self) -> None:
-        options = init._options(
-            [{"name": "urbs", "provider": "clickup", "workspace_id": None, "token": "…1234"}]
-        )
-        assert options[0].id == "urbs"
-        assert options[0].detail == "clickup"
-
-    def test_a_token_never_reaches_the_menu(self) -> None:
-        options = init._options([{"name": "urbs", "provider": "clickup", "token": "…1234"}])
-        assert "1234" not in (options[0].label + options[0].detail)
+class TestWithAPerson:
+    def test_the_menu_answer_lands_in_pm_toml(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_input, "is_interactive", lambda: True)
+        monkeypatch.setattr("builtins.input", lambda _: "2")
+        assert init.run(_args()) == 0
+        assert 'workspace_id   = "w2"' in (repo / ".pm.toml").read_text(encoding="utf-8")
 
 
 class TestFirstCredential:
     def test_the_wizard_asks_for_a_token_when_there_is_none(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Sending someone to another command mid-flow is the friction we removed."""
-        called: dict[str, object] = {}
+        saved: dict[str, object] = {}
+        profiles: list[CredentialProfile] = []
 
-        monkeypatch.setattr(_helpers, "is_interactive", lambda: True)
-        monkeypatch.setattr(init, "list_profiles", lambda: [])
-        monkeypatch.setattr(init, "_run_once", lambda _a: 0)
-        monkeypatch.setattr(init, "ask_secret", lambda _q: "pk_typed_by_hand")
-        monkeypatch.setattr(init, "ask", lambda _q, default=None: "urbs")
-        monkeypatch.setattr(init, "ask_provider", lambda: init.ProviderType.CLICKUP)
-        monkeypatch.setattr(
-            init, "verify_token", lambda p, t: ("dev@example.com", [_team("w1", "One")])
-        )
-        monkeypatch.setattr(init, "report", lambda *a: None)
+        monkeypatch.setattr(_input, "is_interactive", lambda: True)
+        monkeypatch.setattr(init, "list_profiles", lambda: profiles)
         monkeypatch.setattr(
             init,
-            "save_profile",
-            lambda name, provider, token, ws, **kw: called.update(
-                name=name, provider=provider, token=token, ws=ws
-            ),
+            "credential_fields",
+            lambda *_a, **_kw: (ProviderType.CLICKUP, "pk_typed_by_hand", "urbs"),
         )
+        monkeypatch.setattr(
+            init, "probe_token", lambda p, t: ("dev@example.com", [Team("w1", "One", "w1")])
+        )
+        monkeypatch.setattr(init, "print_profile_saved", lambda *a: None)
 
-        args = _args()
+        def save_profile(name, provider, token, ws, **_kw) -> None:  # type: ignore[no-untyped-def]
+            saved.update(name=name, token=token, ws=ws)
+            profiles.append(CredentialProfile(name, provider, token, ws))
+
+        monkeypatch.setattr(init, "save_profile", save_profile)
+
+        args = _args(workspace_id="w1")
         assert init.run(args) == 0
-        assert called["name"] == "urbs"
-        assert called["token"] == "pk_typed_by_hand"
-        assert called["ws"] == "w1"
+        assert saved == {"name": "urbs", "token": "pk_typed_by_hand", "ws": "w1"}
         assert args.profile == "urbs"
-
-
-def _team(ident: str, name: str):  # type: ignore[no-untyped-def]
-    from src.claude_pm.domain.models import Team
-
-    return Team(id=ident, name=name, key=ident)

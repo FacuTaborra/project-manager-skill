@@ -7,33 +7,22 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.application.init_flow import (
-    build_scope,
-    defaults_from_legacy,
-    read_legacy_section,
-    resolve_lists,
-    resolve_space,
-    resolve_workspace,
+from src.claude_pm.enums import ProviderType
+from src.claude_pm.exceptions import ConfigError, PMError
+from src.claude_pm.models.repo_config import (
+    CredentialProfile,
+    IssueDefaults,
+    ProjectRef,
+    Scope,
 )
-from src.claude_pm.domain.models import Project, Team
-from src.claude_pm.exceptions import NeedsChoice, PMError
-from src.claude_pm.pmfile import Defaults, ListRef, ScopeSpec, parse_pm_file
-from src.claude_pm.pmfile_render import render_pm_toml
-
-LEGACY = """\
-# Mapeo de repos a proyectos en el tracker.
-
-[alerts-api]
-provider: clickup
-space: 4plus
-project: modulo-energia
-label: alerts-api
-
-[cahpsa-etl]
-provider: clickup
-space: Cahpsa
-project: Melvin, Nutrex, Witwot
-"""
+from src.claude_pm.models.tracker import Project, Team
+from src.claude_pm.repositories.pm_file_repository import parse_pm_file, render_pm_toml
+from src.claude_pm.services.scope_discovery_service import (
+    Option,
+    choose_profile,
+    discover_scope,
+    verify_declared_scope,
+)
 
 
 class FakeProvider:
@@ -57,111 +46,63 @@ class FakeProvider:
         return self._projects
 
 
-class TestLegacyFile:
-    def test_reads_a_section_case_insensitively(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        section = read_legacy_section(path, "Alerts-API")
-        assert section is not None
-        assert section.space == "4plus"
-        assert section.projects == ("modulo-energia",)
-        assert section.label == "alerts-api"
+class RecordingPick:
+    """Answers every question with the options at `answers[flag]`, and remembers what was asked."""
 
-    def test_comma_separated_projects_become_a_tuple(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        section = read_legacy_section(path, "cahpsa-etl")
-        assert section is not None
-        assert section.projects == ("Melvin", "Nutrex", "Witwot")
+    def __init__(self, answers: dict[str, list[str]] | None = None) -> None:
+        self.answers = answers or {}
+        self.asked: list[tuple[str, list[Option], bool]] = []
 
-    def test_unknown_repo_is_none(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        assert read_legacy_section(path, "not-here") is None
-
-    def test_absent_file_is_none(self, tmp_path: Path) -> None:
-        assert read_legacy_section(tmp_path / "nope.pm", "x") is None
-
-    def test_the_dead_label_becomes_a_default(self, tmp_path: Path) -> None:
-        """`label:` was parsed and dropped. This is where it finally does something."""
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        section = read_legacy_section(path, "alerts-api")
-        assert defaults_from_legacy(section) == Defaults(labels=("alerts-api",))
-
-    def test_no_label_means_no_defaults(self, tmp_path: Path) -> None:
-        path = tmp_path / "projects.pm"
-        path.write_text(LEGACY, encoding="utf-8")
-        assert defaults_from_legacy(read_legacy_section(path, "cahpsa-etl")) == Defaults()
+    def __call__(self, question: str, options, flag: str, multi: bool) -> list[str]:
+        self.asked.append((flag, list(options), multi))
+        return self.answers[flag]
 
 
-class TestResolution:
-    def test_a_single_workspace_is_adopted(self) -> None:
-        assert resolve_workspace(FakeProvider(), None) == ("ws-1", "Hemisphere")
-
-    def test_several_workspaces_ask(self) -> None:
-        provider = FakeProvider(
-            workspaces=[Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
-        )
-        with pytest.raises(NeedsChoice) as excinfo:
-            resolve_workspace(provider, None)
-        assert excinfo.value.payload["action"] == "choose-workspace"
-
-    def test_a_declared_workspace_must_be_reachable(self) -> None:
-        with pytest.raises(PMError, match="cannot reach workspace"):
-            resolve_workspace(FakeProvider(), "ws-other")
-
-    def test_space_by_legacy_name(self) -> None:
-        assert resolve_space(FakeProvider(), space_id=None, space_name="4plus") == (
-            "space-1",
-            "4plus",
-        )
-
-    def test_space_by_name_is_case_insensitive(self) -> None:
-        assert resolve_space(FakeProvider(), space_id=None, space_name="4PLUS")[0] == "space-1"
-
-    def test_unknown_space_name_lists_the_options(self) -> None:
-        with pytest.raises(PMError, match="4plus"):
-            resolve_space(FakeProvider(), space_id=None, space_name="ghost")
-
-    def test_several_spaces_and_no_hint_asks(self) -> None:
-        provider = FakeProvider(
-            spaces=[Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
-        )
-        with pytest.raises(NeedsChoice) as excinfo:
-            resolve_space(provider, space_id=None, space_name=None)
-        assert excinfo.value.payload["action"] == "choose-space"
-
-    def test_lists_by_legacy_names(self) -> None:
-        refs = resolve_lists(FakeProvider(), "space-1", list_names=["modulo-energia"])
-        assert refs == (ListRef(id="list-1", name="modulo-energia"),)
-
-    def test_lists_by_id(self) -> None:
-        refs = resolve_lists(FakeProvider(), "space-1", list_ids=["list-1"])
-        assert refs == (ListRef(id="list-1", name="modulo-energia"),)
-
-    def test_unknown_list_id_is_refused(self) -> None:
-        with pytest.raises(PMError, match="not found in this space"):
-            resolve_lists(FakeProvider(), "space-1", list_ids=["ghost"])
-
-    def test_no_hint_asks_rather_than_picking(self) -> None:
-        with pytest.raises(NeedsChoice) as excinfo:
-            resolve_lists(FakeProvider(), "space-1")
-        assert excinfo.value.payload["action"] == "choose-list"
+def _discover(provider: FakeProvider, pick: RecordingPick, **flags):
+    options = {"workspace_id": None, "team_id": None, "project_ids": None}
+    options.update(flags)
+    return discover_scope(lambda _ws: provider, pick=pick, **options)
 
 
-class TestBuildScope:
-    def test_end_to_end_from_legacy_names(self) -> None:
-        scope = build_scope(
-            lambda _workspace_id: FakeProvider(),
-            workspace_id=None,
-            space_name="4plus",
-            list_names=["modulo-energia"],
-        )
-        assert scope.workspace_id == "ws-1"
-        assert scope.space_id == "space-1"
-        assert scope.list_ids == {"list-1"}
+TWO = [Team(id="a", name="A", key="A"), Team(id="b", name="B", key="B")]
+
+
+class TestDiscoverScope:
+    def test_single_options_are_adopted_without_asking(self) -> None:
+        pick = RecordingPick()
+        scope = _discover(FakeProvider(), pick)
+        assert pick.asked == []
         assert scope.describe() == "Hemisphere → 4plus → modulo-energia"
+
+    def test_several_workspaces_ask_with_the_flag_to_pass(self) -> None:
+        pick = RecordingPick({"--workspace-id": ["b"]})
+        scope = _discover(FakeProvider(workspaces=TWO), pick)
+        assert scope.workspace_id == "b"
+        assert pick.asked[0][0] == "--workspace-id"
+        assert [o.id for o in pick.asked[0][1]] == ["a", "b"]
+
+    def test_several_spaces_ask(self) -> None:
+        pick = RecordingPick({"--space-id": ["a"]})
+        assert _discover(FakeProvider(spaces=TWO), pick).team_id == "a"
+
+    def test_several_lists_are_a_multi_choice(self) -> None:
+        lists = [Project(id="l1", name="One"), Project(id="l2", name="Two")]
+        pick = RecordingPick({"--list-id": ["l1", "l2"]})
+        scope = _discover(FakeProvider(projects=lists), pick)
+        assert scope.project_ids == {"l1", "l2"}
+        assert pick.asked[0][2] is True
+
+    def test_flags_win_and_skip_the_question(self) -> None:
+        pick = RecordingPick()
+        scope = _discover(
+            FakeProvider(workspaces=TWO, spaces=TWO), pick, workspace_id="a", team_id="b"
+        )
+        assert (scope.workspace_id, scope.team_id) == ("a", "b")
+        assert pick.asked == []
+
+    def test_an_unknown_id_lists_what_exists(self) -> None:
+        with pytest.raises(PMError, match="modulo-energia"):
+            _discover(FakeProvider(), RecordingPick(), project_ids=["ghost"])
 
     def test_the_provider_is_pinned_once_the_workspace_is_known(self) -> None:
         """Spaces cannot be listed before the workspace is decided."""
@@ -171,59 +112,131 @@ class TestBuildScope:
             pins.append(workspace_id)
             return FakeProvider()
 
-        build_scope(
-            make_provider, workspace_id=None, space_name="4plus", list_names=["modulo-energia"]
+        discover_scope(
+            make_provider, workspace_id=None, team_id=None, project_ids=None, pick=RecordingPick()
         )
         assert pins == [None, "ws-1"]
 
 
+CLICKUP = CredentialProfile("4plus", ProviderType.CLICKUP, "pk_secret_token")
+OTHER_CLICKUP = CredentialProfile("otro", ProviderType.CLICKUP, "pk_other_token")
+LINEAR = CredentialProfile("personal", ProviderType.LINEAR, "lin_api_token")
+
+
+class TestChooseProfile:
+    def test_no_profiles_says_how_to_add_one(self) -> None:
+        with pytest.raises(ConfigError, match="pm creds add"):
+            choose_profile([], name=None, provider=None, pick=RecordingPick())
+
+    def test_a_named_profile_wins(self) -> None:
+        chosen = choose_profile(
+            [CLICKUP, LINEAR], name="personal", provider=None, pick=RecordingPick()
+        )
+        assert chosen is LINEAR
+
+    def test_an_unknown_name_lists_what_exists(self) -> None:
+        with pytest.raises(PMError, match="Available: 4plus, personal"):
+            choose_profile([CLICKUP, LINEAR], name="typo", provider=None, pick=RecordingPick())
+
+    def test_a_named_profile_must_match_the_provider(self) -> None:
+        with pytest.raises(PMError, match="is for clickup"):
+            choose_profile(
+                [CLICKUP], name="4plus", provider=ProviderType.LINEAR, pick=RecordingPick()
+            )
+
+    def test_the_only_profile_for_the_provider_is_adopted(self) -> None:
+        pick = RecordingPick()
+        chosen = choose_profile(
+            [CLICKUP, LINEAR], name=None, provider=ProviderType.LINEAR, pick=pick
+        )
+        assert chosen is LINEAR
+        assert pick.asked == []
+
+    def test_several_candidates_ask_and_never_show_a_token(self) -> None:
+        pick = RecordingPick({"--profile": ["otro"]})
+        chosen = choose_profile([CLICKUP, OTHER_CLICKUP], name=None, provider=None, pick=pick)
+        assert chosen is OTHER_CLICKUP
+        assert "pk_" not in repr(pick.asked)
+
+
 class TestRenderPmToml:
-    def _scope(self) -> ScopeSpec:
-        return ScopeSpec(
+    def _scope(self) -> Scope:
+        return Scope(
             workspace_id="ws-1",
             workspace_name="Hemisphere",
-            space_id="space-1",
-            space_name="4plus",
-            lists=(ListRef(id="list-1", name="modulo-energia"),),
+            team_id="space-1",
+            team_name="4plus",
+            projects=(ProjectRef(id="list-1", name="modulo-energia"),),
         )
 
     def test_what_it_writes_parses_back_identically(self) -> None:
         rendered = render_pm_toml(
-            provider="clickup",
-            profile="4plus",
+            provider_name="clickup",
+            profile_name="4plus",
             scope=self._scope(),
-            defaults=Defaults(labels=("alerts-api",), state="Backlog", priority=3),
+            defaults=IssueDefaults(labels=("alerts-api",), state="Backlog", priority=3),
         )
         parsed = parse_pm_file(rendered, path=Path("/repo/.pm.toml"))
-        assert parsed.provider.value == "clickup"
-        assert parsed.profile == "4plus"
+        assert parsed.provider_type.value == "clickup"
+        assert parsed.profile_name == "4plus"
         assert parsed.scope == self._scope()
-        assert parsed.defaults == Defaults(labels=("alerts-api",), state="Backlog", priority=3)
+        assert parsed.defaults == IssueDefaults(labels=("alerts-api",), state="Backlog", priority=3)
 
     def test_it_is_valid_toml(self) -> None:
-        rendered = render_pm_toml(provider="linear", profile="p", scope=self._scope())
+        rendered = render_pm_toml(provider_name="linear", profile_name="p", scope=self._scope())
         assert tomllib.loads(rendered)["provider"] == "linear"
 
     def test_the_defaults_table_is_omitted_when_empty(self) -> None:
-        rendered = render_pm_toml(provider="linear", profile="p", scope=self._scope())
+        rendered = render_pm_toml(provider_name="linear", profile_name="p", scope=self._scope())
         assert "[defaults]" not in rendered
 
     def test_quotes_in_names_are_escaped(self) -> None:
-        scope = ScopeSpec(
+        scope = Scope(
             workspace_id="ws",
-            space_id="sp",
-            space_name='the "main" space',
-            lists=(ListRef(id="l", name="a\\b"),),
+            team_id="sp",
+            team_name='the "main" space',
+            projects=(ProjectRef(id="l", name="a\\b"),),
         )
-        rendered = render_pm_toml(provider="linear", profile="p", scope=scope)
+        rendered = render_pm_toml(provider_name="linear", profile_name="p", scope=scope)
         assert tomllib.loads(rendered)["scope"]["space_name"] == 'the "main" space'
         assert tomllib.loads(rendered)["scope"]["lists"][0]["name"] == "a\\b"
 
     def test_several_lists_round_trip(self) -> None:
-        scope = ScopeSpec(
+        scope = Scope(
             workspace_id="ws",
-            space_id="sp",
-            lists=(ListRef(id="a", name="A"), ListRef(id="b", name="B")),
+            team_id="sp",
+            projects=(ProjectRef(id="a", name="A"), ProjectRef(id="b", name="B")),
         )
-        rendered = render_pm_toml(provider="clickup", profile="p", scope=scope)
-        assert parse_pm_file(rendered, path=Path("/x/.pm.toml")).scope.list_ids == {"a", "b"}
+        rendered = render_pm_toml(provider_name="clickup", profile_name="p", scope=scope)
+        assert parse_pm_file(rendered, path=Path("/x/.pm.toml")).scope.project_ids == {"a", "b"}
+
+
+class TestVerifyDeclaredScope:
+    SOURCE = Path("/repo/.pm.toml")
+
+    def _scope(self, **overrides) -> Scope:
+        fields = {
+            "workspace_id": "ws-1",
+            "team_id": "space-1",
+            "team_name": "4plus",
+            "projects": (ProjectRef(id="list-1", name="modulo-energia"),),
+        }
+        fields.update(overrides)
+        return Scope(**fields)
+
+    def test_an_intact_board_has_no_warnings(self) -> None:
+        assert verify_declared_scope(FakeProvider(), self._scope(), self.SOURCE) == []
+
+    def test_a_missing_space_is_refused(self) -> None:
+        with pytest.raises(PMError, match="does not exist"):
+            verify_declared_scope(FakeProvider(), self._scope(team_id="ghost"), self.SOURCE)
+
+    def test_a_missing_list_names_what_exists(self) -> None:
+        scope = self._scope(projects=(ProjectRef(id="ghost", name="x"),))
+        with pytest.raises(PMError, match="modulo-energia"):
+            verify_declared_scope(FakeProvider(), scope, self.SOURCE)
+
+    def test_a_renamed_list_is_a_warning(self) -> None:
+        scope = self._scope(projects=(ProjectRef(id="list-1", name="old-name"),))
+        [warning] = verify_declared_scope(FakeProvider(), scope, self.SOURCE)
+        assert "now named 'modulo-energia'" in warning

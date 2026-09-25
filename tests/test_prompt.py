@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.claude_pm.commands._prompt import Choice, choose, is_interactive
-from src.claude_pm.commands._prompt import _parse_selection as parse
+from src.claude_pm.commands._input import Choice, choose, is_interactive
+from src.claude_pm.commands._input import _parse_selection as parse
 from src.claude_pm.exceptions import PMError
 
 OPTIONS = [Choice(id="a", label="A"), Choice(id="b", label="B"), Choice(id="c", label="C")]
@@ -34,7 +34,7 @@ class TestMultiSelection:
         assert parse("3,1", 3, multi=True) == [2, 0]
 
     def test_all_keywords(self) -> None:
-        for word in ("todos", "todas", "all", "*", "TODOS"):
+        for word in ("all", "*", "ALL"):
             assert parse(word, 3, multi=True) == [0, 1, 2]
 
     def test_a_repeated_number_is_rejected(self) -> None:
@@ -45,7 +45,7 @@ class TestMultiSelection:
         assert parse("1,9", 3, multi=True) == []
 
     def test_all_is_not_a_single_select_word(self) -> None:
-        assert parse("todos", 3, multi=False) == []
+        assert parse("all", 3, multi=False) == []
 
 
 class TestChoose:

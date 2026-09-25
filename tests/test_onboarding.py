@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.application import onboarding
-from src.claude_pm.application.onboarding import READY, Step, next_step
+from src.claude_pm.services import next_step as onboarding
+from src.claude_pm.services.next_step import READY, Step, next_step
 
 CREDENTIALS = """
 version = 1
@@ -52,13 +52,11 @@ def stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             skill.write_text("---\nname: pm\n---\n", encoding="utf-8")
 
         def add_permissions(self) -> None:
-            monkeypatch.setattr(
-                "src.claude_pm.infrastructure.permissions.missing_permissions", lambda: []
-            )
+            monkeypatch.setattr("src.claude_pm.services.next_step.missing_permissions", lambda: [])
 
         def break_permissions(self) -> None:
             monkeypatch.setattr(
-                "src.claude_pm.infrastructure.permissions.missing_permissions",
+                "src.claude_pm.services.next_step.missing_permissions",
                 lambda: ["Bash(pm:*)"],
             )
 
@@ -131,11 +129,6 @@ class TestEdgeCases:
         stage.install_skill()
         stage.add_permissions()
         assert "Settings → Apps" in next_step(stage.repo).hint
-
-    def test_the_token_step_mentions_the_migration_shortcut(self, stage) -> None:
-        stage.install_skill()
-        stage.add_permissions()
-        assert "pm creds import" in next_step(stage.repo).hint
 
 
 class TestRender:

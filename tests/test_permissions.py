@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from src.claude_pm.infrastructure.permissions import (
+from src.claude_pm.exceptions import ConfigError
+from src.claude_pm.repositories.claude_settings_repository import (
     REQUIRED_PERMISSIONS,
     missing_permissions,
     register_permissions,
@@ -89,3 +90,22 @@ class TestRegister:
     def test_the_permission_targets_the_console_script(self) -> None:
         """Installed via uv there is no pm.py path to allow — it is the `pm` command."""
         assert "Bash(pm:*)" in REQUIRED_PERMISSIONS
+
+
+class TestRegisterRefusesUnreadableSettings:
+    def test_a_corrupt_file_is_refused_and_left_untouched(self, tmp_path: Path) -> None:
+        path = tmp_path / "settings.json"
+        path.write_text('{"model": "opus", broken', encoding="utf-8")
+        with pytest.raises(ConfigError, match="not valid JSON"):
+            register_permissions(path)
+        assert path.read_text(encoding="utf-8") == '{"model": "opus", broken'
+
+    def test_a_non_object_file_is_refused(self, tmp_path: Path) -> None:
+        path = _settings(tmp_path, [])  # type: ignore[arg-type]
+        with pytest.raises(ConfigError, match="JSON object"):
+            register_permissions(path)
+
+    def test_a_non_list_allow_is_a_config_error(self, tmp_path: Path) -> None:
+        path = _settings(tmp_path, {"permissions": {"allow": "Bash(ls)"}})
+        with pytest.raises(ConfigError, match="not a list"):
+            register_permissions(path)

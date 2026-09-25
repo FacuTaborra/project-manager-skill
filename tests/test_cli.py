@@ -83,19 +83,11 @@ class TestCommonFlags:
     def test_profile_override_is_available_everywhere(self, argv: list[str]) -> None:
         assert _parse([*argv, "--profile", "4plus"]).profile == "4plus"
 
-    @pytest.mark.parametrize("argv", WRITE_COMMANDS + READ_COMMANDS)
-    def test_repo_name_override_is_available_everywhere(self, argv: list[str]) -> None:
-        assert _parse([*argv, "--repo-name", "other"]).repo_name == "other"
-
 
 class TestInit:
-    def test_from_legacy_without_a_path_uses_the_default(self) -> None:
-        assert _parse(["init", "--from-legacy"]).from_legacy is True
-
-    def test_from_legacy_accepts_an_explicit_path(self) -> None:
-        assert _parse(["init", "--from-legacy", "/tmp/projects.pm"]).from_legacy == (
-            "/tmp/projects.pm"
-        )
+    def test_from_legacy_is_gone(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse(["init", "--from-legacy"])
 
     def test_list_id_is_repeatable(self) -> None:
         assert _parse(["init", "--list-id", "a", "--list-id", "b"]).list_id == ["a", "b"]
@@ -128,9 +120,12 @@ class TestInstallSkill:
 
 
 class TestCreds:
-    def test_the_three_subcommands_exist(self) -> None:
+    def test_creds_import_is_gone(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse(["creds", "import"])
+
+    def test_the_two_subcommands_exist(self) -> None:
         assert _parse(["creds", "list"]).creds_cmd == "list"
-        assert _parse(["creds", "import"]).creds_cmd == "import"
         assert (
             _parse(
                 ["creds", "add", "--name", "n", "--provider", "clickup", "--token", "t"]
@@ -195,11 +190,6 @@ class TestOSErrorHandling:
 
 
 class TestRemovedSurface:
-    def test_setup_can_no_longer_create_a_project(self) -> None:
-        """Discovery is gone: the board comes from .pm.toml."""
+    def test_setup_is_gone(self) -> None:
         with pytest.raises(SystemExit):
-            _parse(["setup", "--create-project"])
-
-    def test_setup_no_longer_takes_id_overrides(self) -> None:
-        with pytest.raises(SystemExit):
-            _parse(["setup", "--team-id", "x"])
+            _parse(["setup"])

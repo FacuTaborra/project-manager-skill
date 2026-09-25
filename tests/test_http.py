@@ -10,13 +10,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.claude_pm.exceptions import ProviderError
-from src.claude_pm.infrastructure.providers._http import HttpClient
+from src.claude_pm.repositories.providers.http_client import HttpClient
 
 
 def _make_client() -> HttpClient:
-    return HttpClient(
-        url="https://example.com/api", headers={"Authorization": "test"}, max_retries=1
-    )
+    return HttpClient(headers={"Authorization": "test"}, max_retries=1)
 
 
 def _mock_response(data: dict, status: int = 200) -> MagicMock:
@@ -52,6 +50,21 @@ class TestGetJson:
             pytest.raises(ProviderError, match="Authentication rejected"),
         ):
             client.get_json("https://example.com/api")
+
+    def test_401_carries_the_auth_hint(self) -> None:
+        client = HttpClient(headers={}, auth_hint="Profile 'x' was rejected.")
+        with (
+            patch("urllib.request.urlopen", side_effect=_http_error(401)),
+            pytest.raises(ProviderError, match="Profile 'x' was rejected"),
+        ):
+            client.get_json("https://example.com/api")
+
+    def test_without_a_hint_it_keeps_the_generic_advice(self) -> None:
+        with (
+            patch("urllib.request.urlopen", side_effect=_http_error(401)),
+            pytest.raises(ProviderError, match="Check your API key"),
+        ):
+            _make_client().get_json("https://example.com/api")
 
     def test_403_raises_provider_error_immediately(self) -> None:
         client = _make_client()
@@ -104,7 +117,7 @@ class TestPostJson:
     def test_post_returns_dict(self) -> None:
         client = _make_client()
         with patch("urllib.request.urlopen", return_value=_mock_response({"id": "123"})):
-            result = client.post_json({"title": "Test"})
+            result = client.post_json("https://example.com/api", {"title": "Test"})
         assert result == {"id": "123"}
 
     def test_post_non_dict_response_raises(self) -> None:
@@ -117,4 +130,4 @@ class TestPostJson:
             patch("urllib.request.urlopen", return_value=resp),
             pytest.raises(ProviderError, match="Unexpected response shape"),
         ):
-            client.post_json({"title": "Test"})
+            client.post_json("https://example.com/api", {"title": "Test"})

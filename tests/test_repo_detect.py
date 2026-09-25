@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.claude_pm.infrastructure.repo_detect import (
-    detect_repo_name,
-    find_pm_file,
-    find_repo_root,
-)
+from src.claude_pm.repositories.git_repo import find_pm_file, find_repo_root
 
 
 def _make_repo(tmp_path: Path, name: str = "my-repo") -> Path:
@@ -63,24 +59,3 @@ class TestFindPmFile:
     def test_returns_none_when_absent(self, tmp_path: Path) -> None:
         root = _make_repo(tmp_path)
         assert find_pm_file(root) is None
-
-
-class TestDetectRepoName:
-    def test_uses_the_repo_root_basename_not_the_cwd(self, tmp_path: Path) -> None:
-        root = _make_repo(tmp_path, name="alerts-api")
-        assert detect_repo_name(root / "src" / "deep") == "alerts-api"
-
-    def test_session_file_wins(self, tmp_path: Path) -> None:
-        root = _make_repo(tmp_path, name="alerts-api")
-        (root / ".claude-session-name").write_text("custom-name\n", encoding="utf-8")
-        assert detect_repo_name(root / "src") == "custom-name"
-
-    def test_blank_session_file_falls_back_to_the_basename(self, tmp_path: Path) -> None:
-        root = _make_repo(tmp_path, name="alerts-api")
-        (root / ".claude-session-name").write_text("   \n", encoding="utf-8")
-        assert detect_repo_name(root) == "alerts-api"
-
-    def test_outside_a_repo_falls_back_to_the_directory(self, tmp_path: Path) -> None:
-        plain = tmp_path / "loose"
-        plain.mkdir()
-        assert detect_repo_name(plain) == "loose"

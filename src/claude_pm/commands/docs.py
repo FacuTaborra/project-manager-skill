@@ -1,22 +1,20 @@
-"""`create-doc` / `update-doc` — ClickUp Docs via v3 API.
-
-Which trackers support docs, and why there is no list to authorize, is the
-guard's business (`ScopeGuard.create_doc`); this module only does I/O.
-"""
+"""`create-doc`, `update-doc` — ClickUp Docs."""
 
 from __future__ import annotations
 
-import argparse
+from argparse import Namespace
 
+from ..dependencies.scope_guard import get_scope_guard
 from ..exceptions import EXIT_OK
-from ._helpers import prepare_write, print_result, read_text_arg
+from ._input import read_text_arg
+from ._output import print_write_outcome
 
 
-def run_create_doc(args: argparse.Namespace) -> int:
-    _, _, guard = prepare_write(args)
-
-    print_result(
-        guard.create_doc(title=args.title, content=_content(args)),
+def create(args: Namespace) -> int:
+    print_write_outcome(
+        get_scope_guard(args).create_doc(
+            title=args.title, content=read_text_arg(args.content_file, "Content")
+        ),
         lambda doc: {
             "ok": True,
             "id": doc.id,
@@ -28,20 +26,14 @@ def run_create_doc(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def run_update_doc(args: argparse.Namespace) -> int:
-    _, _, guard = prepare_write(args)
-
-    print_result(
-        guard.update_doc(
+def update(args: Namespace) -> int:
+    print_write_outcome(
+        get_scope_guard(args).update_doc(
             doc_id=args.doc_id,
             title=args.title,
-            content=_content(args),
+            content=read_text_arg(args.content_file, "Content"),
             page_id=args.page_id,
         ),
         lambda doc: {"ok": True, "id": doc.id, "title": doc.title, "url": doc.url},
     )
     return EXIT_OK
-
-
-def _content(args: argparse.Namespace) -> str | None:
-    return read_text_arg(args.content_file, "Content")

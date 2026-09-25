@@ -1,23 +1,19 @@
-"""`doctor` — report where this machine stands, and what to do next.
-
-Degrades by stage instead of failing on the first missing piece. A diagnostic
-that only works once everything is configured is useless exactly when it is
-needed most.
-"""
+"""`doctor` — degrades by stage, since a diagnostic that needs everything configured is useless."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 
-from ..application.onboarding import SKILL_FILE, next_step
-from ..application.scope import verify_workspace_pin
-from ..config import DEFAULT_VAULT, Config
-from ..credentials import credentials_path, list_profiles, warn_if_world_readable
-from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError, ScopeViolation
-from ..infrastructure.cache import find_legacy_caches
-from ..infrastructure.repo_detect import find_pm_file
-from ._helpers import build_provider
+from ..config import SKILL_FILE, credentials_path
+from ..dependencies.provider import get_provider
+from ..dependencies.repo_config import get_repo_config
+from ..exceptions import EXIT_ERROR, EXIT_OK, PMError, ProviderError
+from ..models.repo_config import RepoConfig
+from ..repositories.credentials_repository import insecure_permissions_warning, list_profiles
+from ..repositories.git_repo import find_pm_file
+from ..services.next_step import next_step
+from ..services.scope_discovery_service import verify_declared_scope
 
 
 def run(args: argparse.Namespace) -> int:
@@ -35,17 +31,18 @@ def run(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     try:
-        config = Config.load(args.repo_name, profile_override=args.profile)
+        config = get_repo_config(args)
     except PMError as exc:
         print(f"  Config:        FAILED — {exc}")
         return EXIT_ERROR
 
     _report_config(config)
+
     return _report_connectivity(config)
 
 
 def _report_credentials() -> bool:
-    """Print the credentials line. False when there is nothing usable yet."""
+    """False when there is nothing usable yet."""
     path = credentials_path()
     try:
         profiles = list_profiles(path)
@@ -57,55 +54,53 @@ def _report_credentials() -> bool:
         print(f"  Credentials:   none ({path})")
         return False
 
-    names = ", ".join(f"{p.name} ({p.provider.value})" for p in profiles)
+    names = ", ".join(f"{p.name} ({p.provider_type.value})" for p in profiles)
     print(f"  Credentials:   {names}")
-    if warning := warn_if_world_readable(path):
+    if warning := insecure_permissions_warning(path):
         print(f"  WARNING:       {warning}")
+
     return True
 
 
-def _report_config(config: Config) -> None:
-    print(f"  Repo:          {config.repo_name}  ({config.repo_root})")
+def _report_config(config: RepoConfig) -> None:
+    print(f"  Repo:          {config.repo_root}")
     print(f"  .pm.toml:      {config.pm_file.path}")
-    print(f"  Provider:      {config.provider_name.value}")
+    print(f"  Provider:      {config.provider_type.value}")
     print(f"  Profile:       {config.profile.name}")
     print(f"  Scope:         {config.scope.describe()}")
     if config.pm_file.defaults.labels:
         print(f"  Auto-labels:   {', '.join(config.pm_file.defaults.labels)}")
 
-    if config.vault_path:
-        print(f"  Vault:         {config.vault_path}")
-    else:
-        print(
-            f"  Vault:         not found (CLAUDE_MEMORY_PATH unset and {DEFAULT_VAULT} "
-            f"does not exist). Tracker-only mode."
-        )
-    print(
-        f"  Cache:         {config.cache_path}"
-        f" {'(exists)' if config.cache_path.is_file() else '(not yet)'}"
-    )
 
-    if legacy := find_legacy_caches(config.vault_path):
-        print(f"  Old caches:    {len(legacy)} orphaned file(s), safe to delete:")
-        for path in legacy[:5]:
-            print(f"                   {path}")
-
-
-def _report_connectivity(config: Config) -> int:
+def _report_connectivity(config: RepoConfig) -> int:
     print("  Provider ping: testing...")
     try:
-        provider = build_provider(config)
+        provider = get_provider(config)
         print(f"  Provider ping: ok — authenticated as {provider.viewer_email()}")
     except ProviderError as exc:
         print(f"  Provider ping: FAILED — {exc}")
         return EXIT_ERROR
 
-    try:
-        verify_workspace_pin(config, provider)
-    except ScopeViolation as exc:
-        print(f"  Pin workspace: FAILED — {exc}")
+    reachable = provider.reachable_workspace_ids()
+    if config.scope.workspace_id not in reachable:
+        print(
+            f"  Pin workspace: FAILED — profile {config.profile.name!r} cannot reach workspace "
+            f"{config.scope.workspace_id}. It reaches: {', '.join(reachable) or '(none)'}. "
+            "Wrong profile for this repo, or the token was rotated."
+        )
         return EXIT_ERROR
 
     print(f"  Pin workspace: ok — the token reaches {config.scope.workspace_id}")
+
+    try:
+        warnings = verify_declared_scope(provider, config.scope, config.pm_file.path)
+    except PMError as exc:
+        print(f"  Board:         FAILED — {exc}")
+        return EXIT_ERROR
+
+    print("  Board:         ok — the space and every list exist")
+    for warning in warnings:
+        print(f"  WARNING:       {warning}")
     print(next_step().render())
+
     return EXIT_OK

@@ -84,7 +84,6 @@ PM_NEW_TOKEN=pk_xxx pm creds add --name 4plus --provider clickup
 
 ```bash
 pm creds list      # qué perfiles hay (tokens redactados)
-pm creds import    # si venías de la versión anterior: migra ~/.claude/secrets/*.env
 ```
 
 En Linux/macOS el archivo queda en `chmod 600` solo.
@@ -117,7 +116,7 @@ $ pm init
 
 El token se lee sin eco, así que no queda en el scrollback.
 
-Cuando lo corre un script o un agente —sin terminal— no pregunta nada: sale con exit 2 y un payload JSON con las opciones, y se reintenta con el flag (`--workspace-id`, `--list-id`). `--no-input` fuerza ese modo.
+Cuando lo corre un script o un agente —sin terminal— no pregunta nada: si falta decidir algo, sale con exit 1 listando las opciones y el flag a pasar (`--workspace-id`, `--space-id`, `--list-id`, `--profile`). `--no-input` fuerza ese modo.
 
 El resultado se ve así:
 
@@ -143,15 +142,6 @@ labels = ["alerts-api"]
 
 Los `*_name` no resuelven nada — mandan los IDs. Están para que los errores digan "modulo-energia" en vez de un número, y para detectar si alguien renombró el tablero.
 
-#### Migrar desde `projects.pm`
-
-```bash
-cd mi-repo
-pm init --from-legacy
-```
-
-Lee la sección de tu repo en el `projects.pm` viejo, resuelve los nombres contra la API, y de paso convierte el campo `label:` en `[defaults] labels` — que ahora sí hace algo.
-
 ---
 
 ## Las barreras
@@ -162,7 +152,7 @@ Ninguna depende de que el modelo se porte bien.
 |---|---|
 | **Scope lock** | Toda escritura valida su destino contra `[scope]`. Un `--project-id` de otro tablero aborta con exit 4. |
 | **Verificación de pertenencia** | `update-issue` lee la task antes de tocarla: si vive en otra lista, aborta. |
-| **Pin de workspace** | Si el token del perfil no alcanza el workspace declarado, no se escribe nada. |
+| **Pin de workspace** | Si el perfil está atado a otro workspace, falla antes de llamar a la API. Si el token no alcanza el tablero, la API lo rechaza y el error dice qué perfil y qué hacer. `pm doctor` lo verifica explícitamente. |
 | **`--dry-run`** | Muestra el destino resuelto por nombre y el payload exacto, sin tocar la API. |
 | **Cambios de estructura apagados** | `create-project` y `create-team` requieren `--allow-structural-changes`, y están fuera del contrato del skill. |
 
@@ -205,11 +195,10 @@ pm doctor                          # dónde estás parado y qué comando sigue
 pm install-skill --yes             # instala SKILL.md + permisos
 pm creds add --name N --provider P --token T
 pm creds list                      # perfiles (tokens redactados)
-pm creds import                    # migra ~/.claude/secrets/*.env
 pm init                            # escribe .pm.toml en este repo
-pm init --from-legacy              # pre-llena desde el projects.pm viejo
-pm setup --force                   # revalida el scope y refresca el cache
 ```
+
+Si venías de una versión anterior: `~/.cache/claude-pm/` ya no se usa y se puede borrar.
 
 ### Issues
 
@@ -247,7 +236,6 @@ de pasar `--label`.
 
 ```bash
 export PM_TOKEN=pk_xxx
-export PM_PROFILE=4plus     # opcional
 ```
 
 `PM_TOKEN` saltea el archivo de credenciales. Las variables `LINEAR_API_KEY` / `CLICKUP_API_KEY`
