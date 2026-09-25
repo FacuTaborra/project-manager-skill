@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+REPO_URL = "https://github.com/FacuTaborra/project-manager-skill"
+
 PM_FILE_NAME = ".pm.toml"
 
 DEFAULT_CREDENTIALS_PATH = Path.home() / ".claude" / "pm" / "credentials.toml"

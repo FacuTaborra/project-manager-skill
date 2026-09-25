@@ -101,7 +101,7 @@ Con MCP tendrías que configurar y mantener dos MCP servers separados con sus pr
 Una vez por máquina:
 
 ```bash
-uv tool install git+https://github.com/FacuTaborra/claude-pm-skill
+uv tool install git+https://github.com/FacuTaborra/project-manager-skill@v0.2.0
 pm install-skill --yes
 ```
 
@@ -116,7 +116,9 @@ pm init      # lista los tableros que ves, elegís, escribe .pm.toml
 
 Ese `.pm.toml` **se commitea**. El siguiente que clone el repo no configura nada: ya hereda a qué tablero escribe.
 
-Verificás que todo está bien con `pm doctor`, y actualizás con `uv tool upgrade claude-pm-skill`.
+Verificás que todo está bien con `pm doctor`, que además te muestra qué versión tenés. Para actualizar,
+reinstalás con el tag nuevo (`uv tool install --force git+https://github.com/FacuTaborra/project-manager-skill@vX.Y.Z`)
+y volvés a correr `pm install-skill --yes`.
 
 ---
 

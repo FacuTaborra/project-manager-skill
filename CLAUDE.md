@@ -1,4 +1,4 @@
-# CLAUDE.md — claude-pm-skill
+# CLAUDE.md — project-manager-skill
 
 CLI que le da a Claude Code un tracker (Linear o ClickUp) detrás de un contrato fijo de
 subcomandos. Lo usa un equipo, sobre varios tableros, desde varios repos.
@@ -111,6 +111,15 @@ test afirme que la llamada **no** llegó al provider, no solo que tiró la excep
 
 ## Distribución
 
-`uv tool install git+https://github.com/FacuTaborra/claude-pm-skill`, y `pm` queda en el PATH.
+`uv tool install git+https://github.com/FacuTaborra/project-manager-skill@vX.Y.Z`, y `pm` queda en el
+PATH. Siempre se instala un tag, nunca `HEAD`: lo que está en `main` no le llega a nadie hasta que sale
+un release.
 `SKILL.md` viaja como package data (`force-include` en pyproject) porque instalado así el repo no
 existe en disco; `pm install-skill` lo lee con `importlib.resources`.
+
+La versión vive en un solo lugar, `__version__` en
+[src/claude_pm/\_\_init\_\_.py](src/claude_pm/__init__.py); pyproject la lee de ahí. Para sacar un release:
+subís `__version__`, mergeás a main, y pusheás el tag `vX.Y.Z`.
+[.github/workflows/release.yml](.github/workflows/release.yml) corre los checks, rechaza el tag si no
+coincide con `__version__` y crea el GitHub Release. Semver: patch para fixes, minor para features, major
+si cambia el formato de `.pm.toml` o de un subcomando.

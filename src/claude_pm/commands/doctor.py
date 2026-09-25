@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .. import __version__
 from ..config import SKILL_FILE, credentials_path
 from ..dependencies.provider import get_provider
 from ..dependencies.repo_config import get_repo_config
@@ -17,7 +18,7 @@ from ..services.scope_discovery_service import verify_declared_scope
 
 
 def run(args: argparse.Namespace) -> int:
-    print("claude-pm-skill — doctor")
+    print(f"project-manager-skill {__version__} — doctor")
     print(f"  Python:        {sys.version.split()[0]}")
     print(f"  Skill:         {SKILL_FILE} {'(installed)' if SKILL_FILE.is_file() else '(missing)'}")
 

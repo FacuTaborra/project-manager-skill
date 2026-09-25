@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "claude-pm-skill"
-version = "0.1.0"
-description = "Linear-backed Product Manager skill for Claude Code, with extensible provider architecture."
+name = "project-manager-skill"
+dynamic = ["version"]
+description = "Product Manager skill for Claude Code, backed by Linear or ClickUp."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -32,8 +32,11 @@ dev = [
 pm = "claude_pm.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/FacuTaborra/claude-pm-skill"
-Issues = "https://github.com/FacuTaborra/claude-pm-skill/issues"
+Homepage = "https://github.com/FacuTaborra/project-manager-skill"
+Issues = "https://github.com/FacuTaborra/project-manager-skill/issues"
+
+[tool.hatch.version]
+path = "src/claude_pm/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/claude_pm"]

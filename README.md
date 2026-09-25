@@ -1,6 +1,6 @@
-# claude-pm-skill
+# project-manager-skill
 
-[![CI](https://github.com/FacuTaborra/product-manager-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/FacuTaborra/product-manager-skill/actions/workflows/ci.yml)
+[![CI](https://github.com/FacuTaborra/project-manager-skill/actions/workflows/ci.yml/badge.svg)](https://github.com/FacuTaborra/project-manager-skill/actions/workflows/ci.yml)
 
 Un skill para Claude Code que convierte a Claude en tu Project Manager, conectado a **Linear** o **ClickUp**.
 
@@ -26,7 +26,7 @@ Cada repo declara en un archivo commiteado a qué tablero escribe, y **el CLI se
 ## Instalación
 
 ```bash
-uv tool install git+https://github.com/FacuTaborra/claude-pm-skill
+uv tool install git+https://github.com/FacuTaborra/project-manager-skill@v0.2.0
 pm install-skill --yes
 pm creds add --name <nombre> --provider clickup --token pk_xxx
 cd tu-repo && pm init
@@ -36,7 +36,7 @@ cd tu-repo && pm init
 
 ```
 $ pm doctor
-claude-pm-skill — doctor
+project-manager-skill 0.2.0 — doctor
   Python:        3.12.12
   Skill:         ~/.claude/skills/pm/SKILL.md (instalada)
   Credenciales:  ninguna
@@ -49,7 +49,17 @@ claude-pm-skill — doctor
 
 Eso también es lo que hace que le puedas pasar el repo a Claude y decirle "instalalo": corre `doctor`, lee el próximo paso, ejecuta, repite. No tiene que adivinar nada de este README.
 
-Para actualizar: `uv tool upgrade claude-pm-skill`.
+Siempre instalás una versión fija (`@vX.Y.Z`), así que un push a `main` no te cambia nada. Las versiones
+están en [Releases](https://github.com/FacuTaborra/project-manager-skill/releases). Para actualizar,
+reinstalás con el tag nuevo y volvés a copiar el skill:
+
+```bash
+uv tool install --force git+https://github.com/FacuTaborra/project-manager-skill@vX.Y.Z
+pm install-skill --yes
+```
+
+`pm doctor` te muestra qué versión tenés. Si venís del paquete viejo `claude-pm-skill`, corré primero
+`uv tool uninstall claude-pm-skill`.
 
 ---
 

@@ -8,7 +8,8 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-from ..config import SKILL_DIR, SKILL_FILE, settings_path
+from .. import __version__
+from ..config import REPO_URL, SKILL_DIR, SKILL_FILE, settings_path
 from ..exceptions import EXIT_OK, PMError
 from ..repositories.claude_settings_repository import missing_permissions, register_permissions
 from ..services.next_step import next_step
@@ -76,5 +77,5 @@ def _skill_markdown() -> str:
 
     raise PMError(
         "SKILL.md is missing from the installed package. Reinstall with "
-        "`uv tool install --force git+https://github.com/FacuTaborra/claude-pm-skill`."
+        f"`uv tool install --force git+{REPO_URL}@v{__version__}`."
     )
